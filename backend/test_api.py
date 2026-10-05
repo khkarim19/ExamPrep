@@ -73,6 +73,24 @@ def test_flow():
     assert c.put(f"/api/admin/problems/{p2}", json={"explanation_md": "e"}, headers=AUTH).status_code == 200
     got = c.get(f"/api/tasks/{tid}").json()["practice"][0]
     assert got["explanation_md"] == "e" and got["solution_md"] == "42" and got["statement_md"] == "b"
+
+    # тренировку нельзя завершить, пока верные ответы не зафиксированы
+    done = lambda: c.put(f"/api/tasks/{tid}/progress", json={"section": "practice", "done": True})
+    assert done().status_code == 409
+    assert c.put(f"/api/problems/{p2}/solved", json={"done": True}).status_code == 200
+    assert c.get(f"/api/tasks/{tid}").json()["practice"][0]["solved"] == 1
+    assert done().status_code == 200
+    # смена правильного ответа обнуляет зафиксированное решение; правка условия — нет
+    assert c.put(f"/api/admin/problems/{p2}", json={"statement_md": "b2"}, headers=AUTH).status_code == 200
+    assert c.get(f"/api/tasks/{tid}").json()["practice"][0]["solved"] == 1
+    assert c.put(f"/api/admin/problems/{p2}", json={"solution_md": "43"}, headers=AUTH).status_code == 200
+    assert c.get(f"/api/tasks/{tid}").json()["practice"][0]["solved"] == 0
+    # задача без правильного ответа не мешает завершению; solved есть только у тренировки
+    assert c.put(f"/api/admin/problems/{p2}", json={"solution_md": ""}, headers=AUTH).status_code == 200
+    assert c.put(f"/api/tasks/{tid}/progress", json={"section": "practice", "done": False}).status_code == 200
+    assert done().status_code == 200
+    assert c.put(f"/api/problems/{p1}/solved", json={"done": True}).status_code == 404  # p1 — пример
+    c.put(f"/api/admin/problems/{p2}", json={"solution_md": "42"}, headers=AUTH)  # вернуть для дальнейших проверок
     assert [p["id"] for p in detail["practice"]] == [p2]
 
     # reorder

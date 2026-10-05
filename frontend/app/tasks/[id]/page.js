@@ -93,13 +93,17 @@ function Cut({ md, label }) {
   );
 }
 
-function AnswerRow({ problem, small, answers, setAnswers }) {
+function AnswerRow({ problem, small, answers, setAnswers, onSolved }) {
   const a = answers[problem.id] || { value: "", result: null };
   const set = (patch) => setAnswers((prev) => ({
     ...prev,
     [problem.id]: { value: "", result: null, ...prev[problem.id], ...patch },
   }));
-  const check = () => set({ result: norm(a.value) === norm(problem.solution_md) });
+  const check = () => {
+    const ok = norm(a.value) === norm(problem.solution_md);
+    set({ result: ok });
+    if (ok && !problem.solved) onSolved(problem.id); // верный ответ фиксируется на сервере
+  };
   return (
     <div className="answer-row">
       <input
@@ -137,18 +141,32 @@ export default function TaskPage() {
     fetch(`/api/tasks/${id}`).then((r) => (r.ok ? r.json() : null)).then((t) => {
       setTask(t);
       setOpenSection(t?.sections?.find((s) => !s.read)?.id ?? null);
+      // уже решённые задачи показываем решёнными (ответ подставляем в поле)
+      setAnswers(Object.fromEntries((t?.practice || []).filter((p) => p.solved)
+        .map((p) => [p.id, { value: p.solution_md, result: true }])));
     });
   }, [id]);
 
   async function toggle(section) {
     const done = !task.progress[section];
-    await fetch(`/api/tasks/${id}/progress`, {
+    const res = await fetch(`/api/tasks/${id}/progress`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ section, done }),
     });
+    if (!res.ok) return; // например 409: тренировка ещё не решена
     setTask({ ...task, progress: { ...task.progress, [section]: done } });
     loadAll();
+  }
+
+  async function markSolved(pid) {
+    const res = await fetch(`/api/problems/${pid}/solved`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ done: true }),
+    });
+    if (!res.ok) return;
+    setTask((t) => ({ ...t, practice: t.practice.map((p) => (p.id === pid ? { ...p, solved: 1 } : p)) }));
   }
 
   function openAndScroll(sid) {
@@ -183,14 +201,20 @@ export default function TaskPage() {
   }
 
   const drills = task.practice;
-  const scored = drills.filter((d) => answers[d.id]?.result != null).length;
-  const correct = drills.filter((d) => answers[d.id]?.result === true).length;
+  // проверяемые задачи — те, у которых задан правильный ответ
+  const required = drills.filter((d) => d.solution_md);
+  const solvedCount = required.filter((d) => d.solved).length;
+  const left = required.length - solvedCount;
   const readCount = task.sections.filter((s) => s.read).length;
 
-  const DoneBtn = ({ section }) => (
-    <button className={"done-btn" + (task.progress[section] ? " done" : "")} onClick={() => toggle(section)}>
-      {DONE_LABELS[section][task.progress[section] ? 1 : 0]}
-    </button>
+  const DoneBtn = ({ section, blocked }) => (
+    <>
+      <button className={"done-btn" + (task.progress[section] ? " done" : "")}
+        disabled={blocked} onClick={() => toggle(section)}>
+        {DONE_LABELS[section][task.progress[section] ? 1 : 0]}
+      </button>
+      {blocked && <span className="done-hint">Чтобы завершить, решите верно все задачи: осталось {left}</span>}
+    </>
   );
 
   return (
@@ -259,16 +283,18 @@ export default function TaskPage() {
 
         {tab === "practice" && (
           <div className="pane">
-            <span className="drill-score">Быстрая тренировка · {scored ? `${correct} из ${scored} верно` : `0 из ${drills.length}`}</span>
+            <span className="drill-score">Быстрая тренировка · решено {solvedCount} из {required.length}</span>
             {drills.length === 0 && <p className="empty">Пока пусто.</p>}
             {drills.map((p) => (
               <div className="card" key={p.id}>
                 <div className="prob-q md"><Markdown>{p.statement_md}</Markdown></div>
-                <AnswerRow problem={p} small answers={answers} setAnswers={setAnswers} />
+                {p.solution_md && (
+                  <AnswerRow problem={p} small answers={answers} setAnswers={setAnswers} onSolved={markSolved} />
+                )}
                 <Cut md={p.explanation_md} label="Показать объяснение" />
               </div>
             ))}
-            <DoneBtn section="practice" />
+            <DoneBtn section="practice" blocked={!task.progress.practice && left > 0} />
           </div>
         )}
 

@@ -35,6 +35,8 @@ def init_db():
         conn.execute("ALTER TABLE theory_sections ADD COLUMN parent_id INTEGER "
                      "REFERENCES theory_sections(id) ON DELETE SET NULL")
     pcols = [r["name"] for r in conn.execute("PRAGMA table_info(problems)")]
+    if "solved" not in pcols:
+        conn.execute("ALTER TABLE problems ADD COLUMN solved INTEGER NOT NULL DEFAULT 0")
     if "explanation_md" not in pcols:
         conn.execute("ALTER TABLE problems ADD COLUMN explanation_md TEXT NOT NULL DEFAULT ''")
         # раньше у задач с решением в solution_md лежал только ответ — сохраняем его как разбор
@@ -129,6 +131,13 @@ class ProgressIn(BaseModel):
 def set_progress(task_id: int, p: ProgressIn):
     conn = db()
     try:
+        if p.section == "practice" and p.done:
+            # тренировку нельзя завершить, пока не зафиксированы верные ответы на все задачи с ответом
+            left = conn.execute(
+                "SELECT COUNT(*) FROM problems WHERE task_id = ? AND kind = 'practice' "
+                "AND solution_md != '' AND solved = 0", (task_id,)).fetchone()[0]
+            if left:
+                raise HTTPException(409, f"Не решено задач тренировки: {left}")
         conn.execute(
             """INSERT INTO progress (task_id, section, done) VALUES (?, ?, ?)
                ON CONFLICT(task_id, section) DO UPDATE SET done = excluded.done""",
@@ -143,6 +152,19 @@ def set_progress(task_id: int, p: ProgressIn):
 
 class ReadIn(BaseModel):
     done: bool
+
+
+@app.put("/api/problems/{problem_id}/solved")
+def set_problem_solved(problem_id: int, r: ReadIn):
+    # ponytail: ответ проверяет клиент (он и так получает solution_md); сервер только запоминает результат
+    conn = db()
+    cur = conn.execute("UPDATE problems SET solved = ? WHERE id = ? AND kind = 'practice'",
+                       (int(r.done), problem_id))
+    conn.commit()
+    conn.close()
+    if not cur.rowcount:
+        raise HTTPException(404)
+    return {"ok": True}
 
 
 @app.put("/api/theory/{section_id}/read")
@@ -341,9 +363,11 @@ def create_problem(p: ProblemCreate):
 def update_problem(problem_id: int, p: ProblemIn):
     conn = db()
     cur = conn.execute(
-        "UPDATE problems SET statement_md = COALESCE(?, statement_md), solution_md = COALESCE(?, solution_md), "
-        "explanation_md = COALESCE(?, explanation_md) WHERE id = ?",
-        (p.statement_md, p.solution_md, p.explanation_md, problem_id))
+        # смена правильного ответа обнуляет зафиксированное решение
+        "UPDATE problems SET solved = CASE WHEN ?1 IS NOT NULL AND ?1 != solution_md THEN 0 ELSE solved END, "
+        "statement_md = COALESCE(?2, statement_md), solution_md = COALESCE(?1, solution_md), "
+        "explanation_md = COALESCE(?3, explanation_md) WHERE id = ?4",
+        (p.solution_md, p.statement_md, p.explanation_md, problem_id))
     conn.commit()
     conn.close()
     if not cur.rowcount:
