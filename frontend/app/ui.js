@@ -14,8 +14,8 @@ export function MD({ children }) {
   );
 }
 
-export const SECTIONS = ["theory", "problems", "practice"];
-export const doneCount = (p) => SECTIONS.filter((s) => p[s]).length;
+// progress = {theory, problems, practice} — три булевых флага
+export const doneCount = (p) => Object.values(p).filter(Boolean).length;
 
 export function Ring({ progress, hole }) {
   const n = doneCount(progress);

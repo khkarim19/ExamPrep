@@ -57,7 +57,8 @@ npm run dev
 
 - `backend/app.py` — всё API; SQLite-файл `backend/ege.db` создаётся и сидится 19 заданиями при первом старте.
 - `backend/seed_demo.py` — заливает демо-контент по 19 темам из макета (затирает текущий контент).
-- `backend/test_api.py` — самопроверка: `venv/bin/python test_api.py`.
+- `backend/test_api.py` — самопроверка: `venv/bin/pip install httpx && venv/bin/python test_api.py`
+  (`httpx` нужен только тестам, поэтому его нет в `requirements.txt`).
 - Контент — markdown c LaTeX-формулами (KaTeX): `$...$` — инлайн, `$$` на отдельных строках — блок.
   Работает в теории, задачах, тренировке, модалке карты и превью админки.
 - У задачи два текстовых поля: `explanation_md` — разбор решения (под катом, и у задач, и у тренировки) и

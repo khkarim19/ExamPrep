@@ -143,8 +143,8 @@ export default function AdminTask() {
     if (!file) return;
     const form = new FormData();
     form.append("file", file);
-    const { markdown } = await adminFetch("/api/admin/upload", { method: "POST", body: form });
-    prompt("Вставь это в markdown:", markdown);
+    const { url } = await adminFetch("/api/admin/upload", { method: "POST", body: form });
+    prompt("Вставь это в markdown:", `![](${url})`);
     e.target.value = "";
   }
 

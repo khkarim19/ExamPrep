@@ -1,7 +1,6 @@
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY,
   title TEXT NOT NULL,
-  theory_md TEXT NOT NULL DEFAULT '',
   sort_order INTEGER NOT NULL
 );
 

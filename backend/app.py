@@ -2,6 +2,7 @@ import os
 import secrets
 import sqlite3
 import uuid
+from contextlib import closing
 from pathlib import Path
 from typing import Literal
 
@@ -16,8 +17,6 @@ UPLOADS = ROOT / "static" / "uploads"
 # ponytail: дефолт для локальной разработки, в проде задать ADMIN_PASSWORD
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin")
 
-Kind = Literal["example", "practice"]
-
 
 def db():
     conn = sqlite3.connect(DB_PATH)
@@ -26,29 +25,24 @@ def db():
     return conn
 
 
+def q(sql, args=()):
+    """SELECT: список строк."""
+    with closing(db()) as c:
+        return c.execute(sql, args).fetchall()
+
+
+def w(sql, args=(), many=False):
+    """Запись в своей транзакции; возвращает курсор (rowcount, lastrowid)."""
+    with closing(db()) as c, c:  # closing закрывает соединение, `with c` коммитит/откатывает
+        return (c.executemany if many else c.execute)(sql, args)
+
+
 def init_db():
-    conn = db()
-    conn.executescript((ROOT / "schema.sql").read_text())
-    # миграция для БД, созданных до появления parent_id
-    cols = [r["name"] for r in conn.execute("PRAGMA table_info(theory_sections)")]
-    if "parent_id" not in cols:
-        conn.execute("ALTER TABLE theory_sections ADD COLUMN parent_id INTEGER "
-                     "REFERENCES theory_sections(id) ON DELETE SET NULL")
-    pcols = [r["name"] for r in conn.execute("PRAGMA table_info(problems)")]
-    if "solved" not in pcols:
-        conn.execute("ALTER TABLE problems ADD COLUMN solved INTEGER NOT NULL DEFAULT 0")
-    if "explanation_md" not in pcols:
-        conn.execute("ALTER TABLE problems ADD COLUMN explanation_md TEXT NOT NULL DEFAULT ''")
-        # раньше у задач с решением в solution_md лежал только ответ — сохраняем его как разбор
-        conn.execute("UPDATE problems SET explanation_md = '**Ответ:** ' || solution_md "
-                     "WHERE kind = 'example' AND solution_md != ''")
-    if conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0] == 0:
-        conn.executemany(
-            "INSERT INTO tasks (title, sort_order) VALUES (?, ?)",
-            [(f"Задание {i}", i) for i in range(1, 20)],
-        )
-    conn.commit()
-    conn.close()
+    with closing(db()) as c:
+        c.executescript((ROOT / "schema.sql").read_text())
+    if not q("SELECT 1 FROM tasks LIMIT 1"):
+        w("INSERT INTO tasks (title, sort_order) VALUES (?, ?)",
+          [(f"Задание {i}", i) for i in range(1, 20)], many=True)
 
 
 init_db()
@@ -65,58 +59,48 @@ def admin(creds: HTTPBasicCredentials = Depends(security)):
         raise HTTPException(401, "Неверный пароль", headers={"WWW-Authenticate": "Basic"})
 
 
-def progress_map(conn, task_id=None):
-    q = "SELECT task_id, section FROM progress WHERE done = 1"
-    rows = conn.execute(q + (" AND task_id = ?" if task_id else ""),
-                        (task_id,) if task_id else ()).fetchall()
+def progress_of():
+    """Прогресс заданий: функция task_id -> {theory, problems, practice}.
+    Теория зачтена, когда прочитаны все её главы (без глав — не зачтена)."""
     done = {}
-    for r in rows:
+    for r in q("SELECT task_id, section FROM progress WHERE done = 1"):
         done.setdefault(r["task_id"], set()).add(r["section"])
-    return done
-
-
-def theory_map(conn):
-    # теория зачтена, когда прочитаны все её главы; без глав — не зачтена
-    return {r["task_id"]: r["r"] == r["c"] for r in conn.execute(
+    theory = {r["task_id"]: r["r"] == r["c"] for r in q(
         "SELECT task_id, COUNT(*) c, SUM(read) r FROM theory_sections GROUP BY task_id")}
+    return lambda tid: {"theory": theory.get(tid, False),
+                        "problems": "problems" in done.get(tid, ()),
+                        "practice": "practice" in done.get(tid, ())}
 
 
-def full_progress(done_sections, theory_done):
-    return {"theory": theory_done,
-            "problems": "problems" in done_sections,
-            "practice": "practice" in done_sections}
+def reorder(table, ids):
+    w(f"UPDATE {table} SET sort_order = ? WHERE id = ?", [(i, x) for i, x in enumerate(ids, 1)], many=True)
+    return {"ok": True}
+
+
+def delete(table, row_id):
+    w(f"DELETE FROM {table} WHERE id = ?", (row_id,))
+    return {"ok": True}
 
 
 # ---------- публичное API ----------
 
 @app.get("/api/tasks")
 def list_tasks():
-    conn = db()
-    tasks = conn.execute("SELECT id, title, sort_order FROM tasks ORDER BY sort_order").fetchall()
-    done = progress_map(conn)
-    tmap = theory_map(conn)
-    conn.close()
-    return [{**dict(t), "progress": full_progress(done.get(t["id"], ()), tmap.get(t["id"], False))}
-            for t in tasks]
+    progress = progress_of()
+    return [{**dict(t), "progress": progress(t["id"])}
+            for t in q("SELECT id, title, sort_order FROM tasks ORDER BY sort_order")]
 
 
 @app.get("/api/tasks/{task_id}")
 def get_task(task_id: int):
-    conn = db()
-    t = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
-    if not t:
-        conn.close()
+    rows = q("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    if not rows:
         raise HTTPException(404)
-    probs = [dict(p) for p in conn.execute(
-        "SELECT * FROM problems WHERE task_id = ? ORDER BY sort_order", (task_id,))]
-    sections = [dict(s) for s in conn.execute(
-        "SELECT * FROM theory_sections WHERE task_id = ? ORDER BY sort_order", (task_id,))]
-    done = progress_map(conn, task_id).get(task_id, ())
-    conn.close()
-    theory_done = bool(sections) and all(s["read"] for s in sections)
-    return {**dict(t),
-            "progress": full_progress(done, theory_done),
-            "sections": sections,
+    probs = [dict(p) for p in q("SELECT * FROM problems WHERE task_id = ? ORDER BY sort_order", (task_id,))]
+    return {**dict(rows[0]),
+            "progress": progress_of()(task_id),
+            "sections": [dict(s) for s in q(
+                "SELECT * FROM theory_sections WHERE task_id = ? ORDER BY sort_order", (task_id,))],
             "examples": [p for p in probs if p["kind"] == "example"],
             "practice": [p for p in probs if p["kind"] == "practice"]}
 
@@ -129,52 +113,37 @@ class ProgressIn(BaseModel):
 
 @app.put("/api/tasks/{task_id}/progress")
 def set_progress(task_id: int, p: ProgressIn):
-    conn = db()
+    if p.section == "practice" and p.done:
+        # тренировку нельзя завершить, пока не зафиксированы верные ответы на все задачи с ответом
+        left = q("SELECT COUNT(*) FROM problems WHERE task_id = ? AND kind = 'practice' "
+                 "AND solution_md != '' AND solved = 0", (task_id,))[0][0]
+        if left:
+            raise HTTPException(409, f"Не решено задач тренировки: {left}")
     try:
-        if p.section == "practice" and p.done:
-            # тренировку нельзя завершить, пока не зафиксированы верные ответы на все задачи с ответом
-            left = conn.execute(
-                "SELECT COUNT(*) FROM problems WHERE task_id = ? AND kind = 'practice' "
-                "AND solution_md != '' AND solved = 0", (task_id,)).fetchone()[0]
-            if left:
-                raise HTTPException(409, f"Не решено задач тренировки: {left}")
-        conn.execute(
-            """INSERT INTO progress (task_id, section, done) VALUES (?, ?, ?)
-               ON CONFLICT(task_id, section) DO UPDATE SET done = excluded.done""",
-            (task_id, p.section, int(p.done)))
-        conn.commit()
+        w("""INSERT INTO progress (task_id, section, done) VALUES (?, ?, ?)
+             ON CONFLICT(task_id, section) DO UPDATE SET done = excluded.done""",
+          (task_id, p.section, int(p.done)))
     except sqlite3.IntegrityError:
         raise HTTPException(404, "Нет такого задания")
-    finally:
-        conn.close()
     return {"ok": True}
 
 
-class ReadIn(BaseModel):
+class DoneIn(BaseModel):
     done: bool
 
 
 @app.put("/api/problems/{problem_id}/solved")
-def set_problem_solved(problem_id: int, r: ReadIn):
+def set_problem_solved(problem_id: int, r: DoneIn):
     # ponytail: ответ проверяет клиент (он и так получает solution_md); сервер только запоминает результат
-    conn = db()
-    cur = conn.execute("UPDATE problems SET solved = ? WHERE id = ? AND kind = 'practice'",
-                       (int(r.done), problem_id))
-    conn.commit()
-    conn.close()
-    if not cur.rowcount:
+    if not w("UPDATE problems SET solved = ? WHERE id = ? AND kind = 'practice'",
+             (int(r.done), problem_id)).rowcount:
         raise HTTPException(404)
     return {"ok": True}
 
 
 @app.put("/api/theory/{section_id}/read")
-def set_section_read(section_id: int, r: ReadIn):
-    conn = db()
-    cur = conn.execute("UPDATE theory_sections SET read = ? WHERE id = ?",
-                       (int(r.done), section_id))
-    conn.commit()
-    conn.close()
-    if not cur.rowcount:
+def set_section_read(section_id: int, r: DoneIn):
+    if not w("UPDATE theory_sections SET read = ? WHERE id = ?", (int(r.done), section_id)).rowcount:
         raise HTTPException(404)
     return {"ok": True}
 
@@ -183,12 +152,11 @@ def set_section_read(section_id: int, r: ReadIn):
 
 class TaskIn(BaseModel):
     title: str | None = None
-    theory_md: str | None = None
 
 
 class ProblemCreate(BaseModel):
     task_id: int
-    kind: Kind
+    kind: Literal["example", "practice"]
     statement_md: str = ""
     solution_md: str = ""
     explanation_md: str = ""
@@ -207,45 +175,26 @@ class Ids(BaseModel):
 # reorder-роуты объявлены раньше роутов с {id}, чтобы литерал матчился первым
 @app.put("/api/admin/tasks/reorder", dependencies=[Depends(admin)])
 def reorder_tasks(body: Ids):
-    conn = db()
-    conn.executemany("UPDATE tasks SET sort_order = ? WHERE id = ?",
-                     [(i, tid) for i, tid in enumerate(body.ids, 1)])
-    conn.commit()
-    conn.close()
-    return {"ok": True}
+    return reorder("tasks", body.ids)
 
 
 @app.post("/api/admin/tasks", dependencies=[Depends(admin)])
 def create_task(t: TaskIn):
-    conn = db()
-    order = conn.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks").fetchone()[0]
-    cur = conn.execute("INSERT INTO tasks (title, theory_md, sort_order) VALUES (?, ?, ?)",
-                       (t.title or "Новое задание", t.theory_md or "", order))
-    conn.commit()
-    conn.close()
+    order = q("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks")[0][0]
+    cur = w("INSERT INTO tasks (title, sort_order) VALUES (?, ?)", (t.title or "Новое задание", order))
     return {"id": cur.lastrowid}
 
 
 @app.put("/api/admin/tasks/{task_id}", dependencies=[Depends(admin)])
 def update_task(task_id: int, t: TaskIn):
-    conn = db()
-    cur = conn.execute(
-        "UPDATE tasks SET title = COALESCE(?, title), theory_md = COALESCE(?, theory_md) WHERE id = ?",
-        (t.title, t.theory_md, task_id))
-    conn.commit()
-    conn.close()
-    if not cur.rowcount:
+    if not w("UPDATE tasks SET title = COALESCE(?, title) WHERE id = ?", (t.title, task_id)).rowcount:
         raise HTTPException(404)
     return {"ok": True}
 
 
 @app.delete("/api/admin/tasks/{task_id}", dependencies=[Depends(admin)])
 def delete_task(task_id: int):
-    conn = db()
-    conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
-    conn.commit()
-    conn.close()
-    return {"ok": True}
+    return delete("tasks", task_id)
 
 
 class SectionCreate(BaseModel):
@@ -262,126 +211,82 @@ class SectionIn(BaseModel):
 
 @app.put("/api/admin/theory/reorder", dependencies=[Depends(admin)])
 def reorder_sections(body: Ids):
-    conn = db()
-    conn.executemany("UPDATE theory_sections SET sort_order = ? WHERE id = ?",
-                     [(i, sid) for i, sid in enumerate(body.ids, 1)])
-    conn.commit()
-    conn.close()
-    return {"ok": True}
+    return reorder("theory_sections", body.ids)
 
 
 @app.post("/api/admin/theory", dependencies=[Depends(admin)])
 def create_section(s: SectionCreate):
-    conn = db()
-    order = conn.execute(
-        "SELECT COALESCE(MAX(sort_order), 0) + 1 FROM theory_sections WHERE task_id = ?",
-        (s.task_id,)).fetchone()[0]
+    order = q("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM theory_sections WHERE task_id = ?",
+              (s.task_id,))[0][0]
     try:
-        cur = conn.execute(
-            "INSERT INTO theory_sections (task_id, title, content_md, sort_order) VALUES (?, ?, ?, ?)",
-            (s.task_id, s.title, s.content_md, order))
-        conn.commit()
+        cur = w("INSERT INTO theory_sections (task_id, title, content_md, sort_order) VALUES (?, ?, ?, ?)",
+                (s.task_id, s.title, s.content_md, order))
     except sqlite3.IntegrityError:
         raise HTTPException(404, "Нет такого задания")
-    finally:
-        conn.close()
     return {"id": cur.lastrowid}
 
 
 @app.put("/api/admin/theory/{section_id}", dependencies=[Depends(admin)])
 def update_section(section_id: int, s: SectionIn):
-    conn = db()
-    try:
-        if "parent_id" in s.model_fields_set and s.parent_id is not None:
-            me = conn.execute("SELECT task_id FROM theory_sections WHERE id = ?",
-                              (section_id,)).fetchone()
-            parent = conn.execute("SELECT task_id FROM theory_sections WHERE id = ?",
-                                  (s.parent_id,)).fetchone()
-            if not me or not parent or me["task_id"] != parent["task_id"]:
-                raise HTTPException(400, "Родитель должен быть главой того же задания")
-            cur_id = s.parent_id
-            for _ in range(100):  # защита от цикла в связях
-                if cur_id == section_id:
-                    raise HTTPException(400, "Связь создаёт цикл")
-                row = conn.execute("SELECT parent_id FROM theory_sections WHERE id = ?",
-                                   (cur_id,)).fetchone()
-                cur_id = row["parent_id"] if row else None
-                if cur_id is None:
-                    break
-        if "parent_id" in s.model_fields_set:
-            conn.execute("UPDATE theory_sections SET parent_id = ? WHERE id = ?",
-                         (s.parent_id, section_id))
-        cur = conn.execute(
-            "UPDATE theory_sections SET title = COALESCE(?, title), content_md = COALESCE(?, content_md) WHERE id = ?",
-            (s.title, s.content_md, section_id))
-        conn.commit()
-    finally:
-        conn.close()
-    if not cur.rowcount:
+    set_parent = "parent_id" in s.model_fields_set
+    if set_parent and s.parent_id is not None:
+        me = q("SELECT task_id FROM theory_sections WHERE id = ?", (section_id,))
+        parent = q("SELECT task_id FROM theory_sections WHERE id = ?", (s.parent_id,))
+        if not me or not parent or me[0]["task_id"] != parent[0]["task_id"]:
+            raise HTTPException(400, "Родитель должен быть главой того же задания")
+        cur_id = s.parent_id
+        for _ in range(100):  # защита от цикла в связях
+            if cur_id == section_id:
+                raise HTTPException(400, "Связь создаёт цикл")
+            row = q("SELECT parent_id FROM theory_sections WHERE id = ?", (cur_id,))
+            cur_id = row[0]["parent_id"] if row else None
+            if cur_id is None:
+                break
+    if not w("UPDATE theory_sections SET title = COALESCE(?, title), content_md = COALESCE(?, content_md), "
+             "parent_id = CASE WHEN ? THEN ? ELSE parent_id END WHERE id = ?",
+             (s.title, s.content_md, set_parent, s.parent_id, section_id)).rowcount:
         raise HTTPException(404)
     return {"ok": True}
 
 
 @app.delete("/api/admin/theory/{section_id}", dependencies=[Depends(admin)])
 def delete_section(section_id: int):
-    conn = db()
-    conn.execute("DELETE FROM theory_sections WHERE id = ?", (section_id,))
-    conn.commit()
-    conn.close()
-    return {"ok": True}
+    return delete("theory_sections", section_id)
 
 
 @app.put("/api/admin/problems/reorder", dependencies=[Depends(admin)])
 def reorder_problems(body: Ids):
-    conn = db()
-    conn.executemany("UPDATE problems SET sort_order = ? WHERE id = ?",
-                     [(i, pid) for i, pid in enumerate(body.ids, 1)])
-    conn.commit()
-    conn.close()
-    return {"ok": True}
+    return reorder("problems", body.ids)
 
 
 @app.post("/api/admin/problems", dependencies=[Depends(admin)])
 def create_problem(p: ProblemCreate):
-    conn = db()
-    order = conn.execute(
-        "SELECT COALESCE(MAX(sort_order), 0) + 1 FROM problems WHERE task_id = ?",
-        (p.task_id,)).fetchone()[0]
+    order = q("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM problems WHERE task_id = ?",
+              (p.task_id,))[0][0]
     try:
-        cur = conn.execute(
-            "INSERT INTO problems (task_id, kind, statement_md, solution_md, explanation_md, sort_order) VALUES (?, ?, ?, ?, ?, ?)",
-            (p.task_id, p.kind, p.statement_md, p.solution_md, p.explanation_md, order))
-        conn.commit()
+        cur = w("INSERT INTO problems (task_id, kind, statement_md, solution_md, explanation_md, sort_order) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (p.task_id, p.kind, p.statement_md, p.solution_md, p.explanation_md, order))
     except sqlite3.IntegrityError:
         raise HTTPException(404, "Нет такого задания")
-    finally:
-        conn.close()
     return {"id": cur.lastrowid}
 
 
 @app.put("/api/admin/problems/{problem_id}", dependencies=[Depends(admin)])
 def update_problem(problem_id: int, p: ProblemIn):
-    conn = db()
-    cur = conn.execute(
+    if not w(
         # смена правильного ответа обнуляет зафиксированное решение
         "UPDATE problems SET solved = CASE WHEN ?1 IS NOT NULL AND ?1 != solution_md THEN 0 ELSE solved END, "
         "statement_md = COALESCE(?2, statement_md), solution_md = COALESCE(?1, solution_md), "
         "explanation_md = COALESCE(?3, explanation_md) WHERE id = ?4",
-        (p.solution_md, p.statement_md, p.explanation_md, problem_id))
-    conn.commit()
-    conn.close()
-    if not cur.rowcount:
+        (p.solution_md, p.statement_md, p.explanation_md, problem_id)).rowcount:
         raise HTTPException(404)
     return {"ok": True}
 
 
 @app.delete("/api/admin/problems/{problem_id}", dependencies=[Depends(admin)])
 def delete_problem(problem_id: int):
-    conn = db()
-    conn.execute("DELETE FROM problems WHERE id = ?", (problem_id,))
-    conn.commit()
-    conn.close()
-    return {"ok": True}
+    return delete("problems", problem_id)
 
 
 @app.post("/api/admin/upload", dependencies=[Depends(admin)])
@@ -389,4 +294,4 @@ async def upload(file: UploadFile):
     ext = Path(file.filename or "").suffix[:10]  # suffix не содержит слэшей — имя безопасно
     name = uuid.uuid4().hex + ext
     (UPLOADS / name).write_bytes(await file.read())
-    return {"url": f"/static/uploads/{name}", "markdown": f"![](/static/uploads/{name})"}
+    return {"url": f"/static/uploads/{name}"}

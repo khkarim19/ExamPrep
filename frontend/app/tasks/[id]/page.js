@@ -93,7 +93,19 @@ function Cut({ md, label }) {
   );
 }
 
-function AnswerRow({ problem, small, answers, setAnswers, onSolved }) {
+// тело главы: текст + кнопка «Прочитал» (используется и в аккордеоне, и в модалке карты)
+function ChapterBody({ s, onRead }) {
+  return (
+    <>
+      <div className="md"><Markdown>{s.content_md}</Markdown></div>
+      <button className="check-btn read-btn" onClick={() => onRead(s)}>
+        {s.read ? "✓ Прочитано" : "Прочитал"}
+      </button>
+    </>
+  );
+}
+
+function AnswerRow({ problem, answers, setAnswers, onSolved }) {
   const a = answers[problem.id] || { value: "", result: null };
   const set = (patch) => setAnswers((prev) => ({
     ...prev,
@@ -108,18 +120,13 @@ function AnswerRow({ problem, small, answers, setAnswers, onSolved }) {
     <div className="answer-row">
       <input
         className={a.result == null ? "" : a.result ? "ok" : "bad"}
-        style={small ? { maxWidth: 140 } : undefined}
         value={a.value}
-        placeholder={small ? "Ответ" : "Ваш ответ"}
+        placeholder="Ответ"
         onChange={(e) => set({ value: e.target.value, result: null })}
         onKeyDown={(e) => e.key === "Enter" && check()}
       />
-      <button className="check-btn" onClick={check}>{small ? "Ок" : "Проверить"}</button>
-      {a.result != null && (
-        <span className={"verdict " + (a.result ? "ok" : "bad")}>
-          {small ? (a.result ? "✓" : "✕") : a.result ? "Верно" : "Неверно"}
-        </span>
-      )}
+      <button className="check-btn" onClick={check}>Ок</button>
+      {a.result != null && <span className={"verdict " + (a.result ? "ok" : "bad")}>{a.result ? "✓" : "✕"}</span>}
     </div>
   );
 }
@@ -169,11 +176,6 @@ export default function TaskPage() {
     setTask((t) => ({ ...t, practice: t.practice.map((p) => (p.id === pid ? { ...p, solved: 1 } : p)) }));
   }
 
-  function openAndScroll(sid) {
-    setOpenSection(sid);
-    setTimeout(() => document.getElementById(`sec-${sid}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
-  }
-
   async function toggleRead(s) {
     const done = !s.read;
     await fetch(`/api/theory/${s.id}/read`, {
@@ -184,10 +186,6 @@ export default function TaskPage() {
     const sections = task.sections.map((x) => (x.id === s.id ? { ...x, read: done ? 1 : 0 } : x));
     const theory = sections.length > 0 && sections.every((x) => x.read);
     setTask({ ...task, sections, progress: { ...task.progress, theory } });
-    if (done) {
-      const next = sections.find((x) => !x.read);
-      if (next) openAndScroll(next.id); else setOpenSection(null);
-    }
     loadAll();
   }
 
@@ -245,19 +243,14 @@ export default function TaskPage() {
             {task.sections.map((s, i) => {
               const open = openSection === s.id;
               return (
-                <div className="card chapter" key={s.id} id={`sec-${s.id}`}>
+                <div className="card chapter" key={s.id}>
                   <button className="chapter-head" onClick={() => setOpenSection(open ? null : s.id)}>
                     <span className={"read-dot" + (s.read ? " on" : "")}>{s.read ? "✓" : i + 1}</span>
                     <span className="chapter-title">{s.title}</span>
                     <span className={"chevron" + (open ? " up" : "")}>▾</span>
                   </button>
                   {open && (
-                    <div className="chapter-body">
-                      <div className="md"><Markdown>{s.content_md}</Markdown></div>
-                      <button className="check-btn read-btn" onClick={() => toggleRead(s)}>
-                        {s.read ? "✓ Прочитано" : "Прочитал"}
-                      </button>
-                    </div>
+                    <div className="chapter-body"><ChapterBody s={s} onRead={toggleRead} /></div>
                   )}
                 </div>
               );
@@ -289,7 +282,7 @@ export default function TaskPage() {
               <div className="card" key={p.id}>
                 <div className="prob-q md"><Markdown>{p.statement_md}</Markdown></div>
                 {p.solution_md && (
-                  <AnswerRow problem={p} small answers={answers} setAnswers={setAnswers} onSolved={markSolved} />
+                  <AnswerRow problem={p} answers={answers} setAnswers={setAnswers} onSolved={markSolved} />
                 )}
                 <Cut md={p.explanation_md} label="Показать объяснение" />
               </div>
@@ -309,10 +302,7 @@ export default function TaskPage() {
                   <span className="spacer" />
                   <button className="modal-x" onClick={() => setModal(null)}>✕</button>
                 </div>
-                <div className="md"><Markdown>{s.content_md}</Markdown></div>
-                <button className="check-btn read-btn" onClick={() => toggleRead(s)}>
-                  {s.read ? "✓ Прочитано" : "Прочитал"}
-                </button>
+                <ChapterBody s={s} onRead={toggleRead} />
               </div>
             </div>
           );

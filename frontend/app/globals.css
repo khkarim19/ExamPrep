@@ -115,13 +115,12 @@ button { cursor: pointer; font-family: inherit; }
 
 .pane { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; animation: fadeUp .25s ease; }
 .card { align-self: stretch; background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; }
-.theory-card { padding: 22px 24px; font-size: 15.5px; line-height: 1.65; }
 .prob-num { font-size: 12.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
 .prob-q { font-size: 15.5px; font-weight: 600; margin-bottom: 14px; }
 .prob-q p { margin: 0 0 6px; }
 .answer-row { display: flex; align-items: center; gap: 10px; }
 .answer-row input {
-  flex: 1; max-width: 220px; padding: 10px 14px; border-radius: 8px;
+  flex: 1; max-width: 140px; padding: 10px 14px; border-radius: 8px;
   border: 1.5px solid var(--border); background: var(--bg); color: var(--text);
   font-family: inherit; font-size: 14.5px; outline: none;
 }
