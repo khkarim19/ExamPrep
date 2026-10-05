@@ -1,0 +1,21 @@
+services:
+  backend:
+    build: ./backend
+    environment:
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+    volumes:
+      - db:/data
+      - uploads:/app/static/uploads
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  db:
+  uploads:

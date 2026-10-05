@@ -9,7 +9,19 @@
 Тёмная/светлая тема, переключатель в шапке. UI по макету из Claude Design
 («Подготовка к экзамену.dc.html»).
 
-## Запуск
+## Запуск в Docker (проще всего)
+
+```sh
+docker compose up -d --build
+```
+
+Сайт: http://localhost:3000 · Админка: http://localhost:3000/admin.
+Пароль админки: `ADMIN_PASSWORD=секрет docker compose up -d` (по умолчанию `admin`).
+БД и загруженные картинки лежат в томах `db` и `uploads` и переживают перезапуск.
+Залить демо-контент по 19 темам (затирает текущий): `docker compose exec backend python seed_demo.py`.
+Остановить: `docker compose down` (тома сохраняются; `down -v` — удалить и данные).
+
+## Запуск без Docker (для разработки)
 
 Бэкенд (FastAPI + SQLite, порт 8008):
 
