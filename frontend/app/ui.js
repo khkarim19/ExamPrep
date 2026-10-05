@@ -46,8 +46,7 @@ export function Shell({ tasks, activeId, kicker, title, children }) {
     <div className="app">
       <aside className="sidebar">
         <div className="sidebar-head">
-          <div className="brand"><span className="brand-mark" />Подготовка</div>
-          <Link href="/" className={"home-btn" + (activeId == null ? " active" : "")}>Главная</Link>
+          <Link href="/" className="brand" title="На главную"><span className="brand-mark" />Подготовка</Link>
           <div className="overall"><span>Общий прогресс</span><b>{percent}%</b></div>
           <div className="bar"><div style={{ width: percent + "%" }} /></div>
         </div>
