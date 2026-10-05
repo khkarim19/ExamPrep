@@ -31,6 +31,21 @@ SECTIONS_OVERRIDE = {
     ],
 }
 
+# разборы решений: (номер темы с 1, вид, номер задачи с 1) -> markdown.
+# Для остальных задач-примеров разбор по умолчанию — «Ответ: …»; у тренировки разбора нет.
+EXPLANATIONS = {
+    (1, "example", 1): (
+        "Знаменатели 5 и 4 разные, поэтому ищем общий знаменатель: НОК(5, 4) = 20.\n\n"
+        "$$\n\\frac{2}{5} + \\frac{1}{4} = \\frac{2 \\cdot 4}{20} + \\frac{1 \\cdot 5}{20} = \\frac{8 + 5}{20} = \\frac{13}{20}\n$$\n\n"
+        "Дробь $\\frac{13}{20}$ несократима, это и есть ответ."),
+    (1, "example", 2): (
+        "Приведём к знаменателю 9: $\\frac{1}{3} = \\frac{3}{9}$.\n\n"
+        "$$\n\\frac{7}{9} - \\frac{1}{3} = \\frac{7}{9} - \\frac{3}{9} = \\frac{4}{9}\n$$\n\n"
+        "Ответ: $\\frac{4}{9}$."),
+    (1, "practice", 1): (
+        "НОК(2, 3) = 6, значит $\\frac{1}{2} + \\frac{1}{3} = \\frac{3}{6} + \\frac{2}{6} = \\frac{5}{6}$."),
+}
+
 # (title, theory, problems[[q, answer]], drills[[q, answer]])
 TOPICS = [
     ("Обыкновенные дроби",
@@ -132,11 +147,14 @@ def seed():
             if parent_idx is not None:
                 conn.execute("UPDATE theory_sections SET parent_id = ? WHERE id = ?",
                              (ids[parent_idx], sid))
-        rows = [(tid, "example", q, a, n) for n, (q, a) in enumerate(problems, 1)]
-        rows += [(tid, "practice", q, a, n) for n, (q, a) in enumerate(drills, 1)]
+        rows = [(tid, "example", q, a,
+                 EXPLANATIONS.get((i, "example", n), f"**Ответ:** {a}"), n)
+                for n, (q, a) in enumerate(problems, 1)]
+        rows += [(tid, "practice", q, a, EXPLANATIONS.get((i, "practice", n), ""), n)
+                 for n, (q, a) in enumerate(drills, 1)]
         conn.executemany(
-            "INSERT INTO problems (task_id, kind, statement_md, solution_md, sort_order) VALUES (?, ?, ?, ?, ?)",
-            rows)
+            "INSERT INTO problems (task_id, kind, statement_md, solution_md, explanation_md, sort_order) "
+            "VALUES (?, ?, ?, ?, ?, ?)", rows)
     conn.commit()
     conn.close()
     print(f"seeded {len(TOPICS)} tasks")

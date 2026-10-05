@@ -64,15 +64,23 @@ function SectionEditor({ s, index, list, setList, reload }) {
   );
 }
 
+// kind: example — условие + разбор (без проверки ответа); practice — условие + ответ + необязательный разбор
 function ProblemEditor({ p, index, list, setList, reload }) {
   const [statement, setStatement] = useState(p.statement_md);
   const [solution, setSolution] = useState(p.solution_md);
-  const dirty = statement !== p.statement_md || solution !== p.solution_md;
+  const [explanation, setExplanation] = useState(p.explanation_md);
+  const isPractice = p.kind === "practice";
+  const dirty = statement !== p.statement_md || explanation !== p.explanation_md
+    || (isPractice && solution !== p.solution_md);
 
   async function save() {
     await adminFetch(`/api/admin/problems/${p.id}`, {
       method: "PUT",
-      body: JSON.stringify({ statement_md: statement, solution_md: solution }),
+      body: JSON.stringify({
+        statement_md: statement,
+        explanation_md: explanation,
+        ...(isPractice && { solution_md: solution }),
+      }),
     });
     reload();
   }
@@ -92,8 +100,13 @@ function ProblemEditor({ p, index, list, setList, reload }) {
         <button onClick={() => move(list, index, 1, "/api/admin/problems/reorder").then(setList)}>↓</button>
         <button onClick={remove}>удалить</button>
       </div>
-      <textarea value={statement} onChange={(e) => setStatement(e.target.value)} placeholder="Условие (markdown)" />
-      <textarea value={solution} onChange={(e) => setSolution(e.target.value)} placeholder="Ответ (для проверки)" style={{ minHeight: 44 }} />
+      <textarea value={statement} onChange={(e) => setStatement(e.target.value)} placeholder="Условие (markdown, LaTeX)" />
+      {isPractice && (
+        <textarea value={solution} onChange={(e) => setSolution(e.target.value)}
+          placeholder="Правильный ответ (для проверки)" style={{ minHeight: 44 }} />
+      )}
+      <textarea value={explanation} onChange={(e) => setExplanation(e.target.value)}
+        placeholder={isPractice ? "Объяснение решения (необязательно, будет под катом)" : "Объяснение решения (будет под катом)"} />
       {dirty && <button className="done-btn" onClick={save}>Сохранить</button>}
     </div>
   );
@@ -150,7 +163,7 @@ export default function AdminTask() {
       ))}
       <button onClick={addSection}>+ добавить главу</button>
 
-      {[["example", "Задачи (с проверкой ответа)"], ["practice", "Тренировка"]].map(
+      {[["example", "Задачи (с разбором решения)"], ["practice", "Тренировка (с проверкой ответа)"]].map(
         ([kind, title]) => {
           const list = kind === "example" ? task.examples : task.practice;
           const setList = (next) =>

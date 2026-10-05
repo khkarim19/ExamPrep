@@ -136,6 +136,17 @@ button { cursor: pointer; font-family: inherit; }
 .verdict.bad { color: var(--error); }
 .drill-score { font-size: 13px; font-weight: 600; color: var(--text-muted); }
 
+/* кат: свёрнутое объяснение решения */
+.cut { margin-top: 14px; border-top: 1px dashed var(--border-strong); padding-top: 12px; }
+.cut summary {
+  cursor: pointer; color: var(--accent); font-size: 14px; font-weight: 700;
+  list-style: none; user-select: none;
+}
+.cut summary::-webkit-details-marker { display: none; }
+.cut summary::before { content: "▸ "; }
+.cut[open] summary::before { content: "▾ "; }
+.cut .md { margin-top: 10px; font-size: 15px; line-height: 1.6; }
+
 /* теория: mind map и главы */
 .mindmap-card { padding: 8px; }
 .mindmap { display: block; width: 100%; height: auto; }

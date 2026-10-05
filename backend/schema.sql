@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS problems (
   task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   kind TEXT NOT NULL CHECK (kind IN ('example', 'practice')),
   statement_md TEXT NOT NULL DEFAULT '',
-  solution_md TEXT NOT NULL DEFAULT '',
+  solution_md TEXT NOT NULL DEFAULT '',  -- короткий ответ для проверки (только тренировка)
+  explanation_md TEXT NOT NULL DEFAULT '',  -- разбор решения, показывается под катом
   sort_order INTEGER NOT NULL
 );
 

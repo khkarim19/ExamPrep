@@ -34,6 +34,12 @@ def init_db():
     if "parent_id" not in cols:
         conn.execute("ALTER TABLE theory_sections ADD COLUMN parent_id INTEGER "
                      "REFERENCES theory_sections(id) ON DELETE SET NULL")
+    pcols = [r["name"] for r in conn.execute("PRAGMA table_info(problems)")]
+    if "explanation_md" not in pcols:
+        conn.execute("ALTER TABLE problems ADD COLUMN explanation_md TEXT NOT NULL DEFAULT ''")
+        # раньше у задач с решением в solution_md лежал только ответ — сохраняем его как разбор
+        conn.execute("UPDATE problems SET explanation_md = '**Ответ:** ' || solution_md "
+                     "WHERE kind = 'example' AND solution_md != ''")
     if conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0] == 0:
         conn.executemany(
             "INSERT INTO tasks (title, sort_order) VALUES (?, ?)",
@@ -163,11 +169,13 @@ class ProblemCreate(BaseModel):
     kind: Kind
     statement_md: str = ""
     solution_md: str = ""
+    explanation_md: str = ""
 
 
 class ProblemIn(BaseModel):
     statement_md: str | None = None
     solution_md: str | None = None
+    explanation_md: str | None = None
 
 
 class Ids(BaseModel):
@@ -319,8 +327,8 @@ def create_problem(p: ProblemCreate):
         (p.task_id,)).fetchone()[0]
     try:
         cur = conn.execute(
-            "INSERT INTO problems (task_id, kind, statement_md, solution_md, sort_order) VALUES (?, ?, ?, ?, ?)",
-            (p.task_id, p.kind, p.statement_md, p.solution_md, order))
+            "INSERT INTO problems (task_id, kind, statement_md, solution_md, explanation_md, sort_order) VALUES (?, ?, ?, ?, ?, ?)",
+            (p.task_id, p.kind, p.statement_md, p.solution_md, p.explanation_md, order))
         conn.commit()
     except sqlite3.IntegrityError:
         raise HTTPException(404, "Нет такого задания")
@@ -333,8 +341,9 @@ def create_problem(p: ProblemCreate):
 def update_problem(problem_id: int, p: ProblemIn):
     conn = db()
     cur = conn.execute(
-        "UPDATE problems SET statement_md = COALESCE(?, statement_md), solution_md = COALESCE(?, solution_md) WHERE id = ?",
-        (p.statement_md, p.solution_md, problem_id))
+        "UPDATE problems SET statement_md = COALESCE(?, statement_md), solution_md = COALESCE(?, solution_md), "
+        "explanation_md = COALESCE(?, explanation_md) WHERE id = ?",
+        (p.statement_md, p.solution_md, p.explanation_md, problem_id))
     conn.commit()
     conn.close()
     if not cur.rowcount:

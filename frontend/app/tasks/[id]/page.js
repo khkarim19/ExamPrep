@@ -9,7 +9,7 @@ const TABS = [
   ["practice", "Тренировка"],
 ];
 const DONE_LABELS = {
-  problems: ["Прорешал", "Прорешано"],
+  problems: ["Разобрал", "Разобрано"],
   practice: ["Завершить тренировку", "Тренировка пройдена"],
 };
 
@@ -79,6 +79,17 @@ function MindMap({ title, sections, onPick }) {
         );
       })}
     </svg>
+  );
+}
+
+// кат: объяснение решения свёрнуто, пока пользователь сам его не откроет
+function Cut({ md, label }) {
+  if (!md) return null;
+  return (
+    <details className="cut">
+      <summary>{label}</summary>
+      <div className="md"><Markdown>{md}</Markdown></div>
+    </details>
   );
 }
 
@@ -237,7 +248,9 @@ export default function TaskPage() {
               <div className="card" key={p.id}>
                 <div className="prob-num">Задача {i + 1}</div>
                 <div className="prob-q md"><Markdown>{p.statement_md}</Markdown></div>
-                <AnswerRow problem={p} answers={answers} setAnswers={setAnswers} />
+                {p.explanation_md
+                  ? <Cut md={p.explanation_md} label="Показать решение" />
+                  : <p className="empty">Разбор решения пока не добавлен.</p>}
               </div>
             ))}
             <DoneBtn section="problems" />
@@ -252,6 +265,7 @@ export default function TaskPage() {
               <div className="card" key={p.id}>
                 <div className="prob-q md"><Markdown>{p.statement_md}</Markdown></div>
                 <AnswerRow problem={p} small answers={answers} setAnswers={setAnswers} />
+                <Cut md={p.explanation_md} label="Показать объяснение" />
               </div>
             ))}
             <DoneBtn section="practice" />

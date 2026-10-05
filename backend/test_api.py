@@ -60,11 +60,19 @@ def test_flow():
     assert c.delete(f"/api/admin/theory/{s1}", headers=AUTH).status_code == 200
     left = c.get(f"/api/tasks/{tid}").json()["sections"]
     assert [s["id"] for s in left] == [s2] and left[0]["parent_id"] is None
-    p1 = c.post("/api/admin/problems", json={"task_id": tid, "kind": "example", "statement_md": "a"}, headers=AUTH).json()["id"]
-    p2 = c.post("/api/admin/problems", json={"task_id": tid, "kind": "practice", "statement_md": "b"}, headers=AUTH).json()["id"]
+    p1 = c.post("/api/admin/problems", json={"task_id": tid, "kind": "example", "statement_md": "a",
+                                             "explanation_md": "разбор"}, headers=AUTH).json()["id"]
+    p2 = c.post("/api/admin/problems", json={"task_id": tid, "kind": "practice", "statement_md": "b",
+                                             "solution_md": "42"}, headers=AUTH).json()["id"]
 
     detail = c.get(f"/api/tasks/{tid}").json()
     assert [p["id"] for p in detail["examples"]] == [p1]
+    assert detail["examples"][0]["explanation_md"] == "разбор"
+    assert detail["practice"][0]["solution_md"] == "42" and detail["practice"][0]["explanation_md"] == ""
+    # частичный апдейт не затирает соседние поля
+    assert c.put(f"/api/admin/problems/{p2}", json={"explanation_md": "e"}, headers=AUTH).status_code == 200
+    got = c.get(f"/api/tasks/{tid}").json()["practice"][0]
+    assert got["explanation_md"] == "e" and got["solution_md"] == "42" and got["statement_md"] == "b"
     assert [p["id"] for p in detail["practice"]] == [p2]
 
     # reorder
