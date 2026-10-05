@@ -1,0 +1,13 @@
+.DS_Store
+node_modules/
+.next/
+venv/
+.venv/
+__pycache__/
+*.pyc
+# БД создаётся и сидится при первом старте; демо-контент — backend/seed_demo.py
+backend/ege.db
+backend/static/uploads/
+.claude/settings.local.json
+# учебные материалы хранятся локально
+backend/content/
