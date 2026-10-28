@@ -66,6 +66,13 @@ npm run dev
   БД, созданные до появления проектов, при старте мигрируют: все их задания попадают в проект
   «Подготовка к экзамену».
 - `backend/seed_demo.py` — демо-проект с контентом по 19 темам из макета (пересоздаёт только себя).
+- `backend/seed_content.py` — загрузчик учебных проектов из `backend/content/` (по файлу на тему:
+  теория по главам, задачи с разбором, тренировка). Сами материалы в репозиторий не входят:
+  `backend/content/` в `.gitignore`, реестр проектов — локальный `backend/content/projects.py`:
+  `PROJECTS = {ключ: (название проекта, префикс файлов, разрешены ли LaTeX-формулы)}`.
+  Загрузчик проверяет контент (`seed_content.py <ключ> --check`) и заполняет проект с этим названием,
+  сохраняя его id (прогресс по проекту сбрасывается).
+  В Docker: `docker compose up -d --build backend && docker compose exec backend python seed_content.py <ключ>`.
 - `backend/test_api.py` — самопроверка: `venv/bin/pip install httpx && venv/bin/python test_api.py`
   (`httpx` нужен только тестам, поэтому его нет в `requirements.txt`).
 - Контент — markdown c LaTeX-формулами (KaTeX): `$...$` — инлайн, `$$` на отдельных строках — блок.
