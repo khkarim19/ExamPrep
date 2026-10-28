@@ -13,25 +13,46 @@ AUTH = {"Authorization": "Basic " + base64.b64encode(b"admin:test-pw").decode()}
 
 
 def test_flow():
-    # сид: 19 заданий, прогресс пустой
-    tasks = c.get("/api/tasks").json()
-    assert len(tasks) == 19
-    assert tasks[0]["progress"] == {"theory": False, "problems": False, "practice": False}
-
-    # прогресс задач/тренировки — вручную
-    assert c.put("/api/tasks/1/progress", json={"section": "problems", "done": True}).status_code == 200
-    assert c.get("/api/tasks/1").json()["progress"]["problems"] is True
-    assert c.put("/api/tasks/999/progress", json={"section": "problems", "done": True}).status_code == 404
-    # теорию вручную двигать нельзя
-    assert c.put("/api/tasks/1/progress", json={"section": "theory", "done": True}).status_code == 422
+    # свежая БД: реестр проектов пуст
+    assert c.get("/api/projects").json() == []
 
     # админка: без пароля нельзя
-    assert c.post("/api/admin/tasks", json={}).status_code == 401
-    assert c.post("/api/admin/tasks", json={}, headers={
+    assert c.post("/api/admin/projects", json={}).status_code == 401
+    assert c.post("/api/admin/projects", json={}, headers={
         "Authorization": "Basic " + base64.b64encode(b"admin:wrong").decode()}).status_code == 401
 
+    # CRUD проектов
+    pa = c.post("/api/admin/projects", json={"title": "Математика"}, headers=AUTH).json()["id"]
+    pb = c.post("/api/admin/projects", json={}, headers=AUTH).json()["id"]
+    assert [p["title"] for p in c.get("/api/projects").json()] == ["Математика", "Новый проект"]
+    assert c.put(f"/api/admin/projects/{pb}", json={"title": "Физика"}, headers=AUTH).status_code == 200
+    assert c.put("/api/admin/projects/999", json={"title": "x"}, headers=AUTH).status_code == 404
+    assert c.put("/api/admin/projects/reorder", json={"ids": [pb, pa]}, headers=AUTH).status_code == 200
+    assert [p["title"] for p in c.get("/api/projects").json()] == ["Физика", "Математика"]
+    assert c.get("/api/projects/999").status_code == 404
+
+    # задания живут внутри проекта; порядок нумеруется в пределах проекта
+    t1 = c.post("/api/admin/tasks", json={"project_id": pa, "title": "A1"}, headers=AUTH).json()["id"]
+    c.post("/api/admin/tasks", json={"project_id": pa, "title": "A2"}, headers=AUTH)
+    tb = c.post("/api/admin/tasks", json={"project_id": pb, "title": "B1"}, headers=AUTH).json()["id"]
+    assert c.post("/api/admin/tasks", json={"project_id": 999}, headers=AUTH).status_code == 404
+    assert c.post("/api/admin/tasks", json={}, headers=AUTH).status_code == 422  # без проекта нельзя
+    proj = c.get(f"/api/projects/{pa}").json()
+    assert proj["title"] == "Математика" and [t["title"] for t in proj["tasks"]] == ["A1", "A2"]
+    assert proj["tasks"][0]["progress"] == {"theory": False, "problems": False, "practice": False}
+    assert [t["title"] for t in c.get(f"/api/projects/{pb}").json()["tasks"]] == ["B1"]
+    assert c.get(f"/api/tasks/{t1}").json()["project_id"] == pa
+
+    # прогресс задач/тренировки — вручную; виден в реестре
+    assert c.put(f"/api/tasks/{t1}/progress", json={"section": "problems", "done": True}).status_code == 200
+    assert c.get(f"/api/tasks/{t1}").json()["progress"]["problems"] is True
+    assert {p["id"]: (p["tasks"], p["done"]) for p in c.get("/api/projects").json()} == {pa: (2, 1), pb: (1, 0)}
+    assert c.put("/api/tasks/999/progress", json={"section": "problems", "done": True}).status_code == 404
+    # теорию вручную двигать нельзя
+    assert c.put(f"/api/tasks/{t1}/progress", json={"section": "theory", "done": True}).status_code == 422
+
     # CRUD задач и проблем
-    tid = c.post("/api/admin/tasks", json={"title": "Тест"}, headers=AUTH).json()["id"]
+    tid = c.post("/api/admin/tasks", json={"project_id": pa, "title": "Тест"}, headers=AUTH).json()["id"]
 
     # теория по главам: автозачёт когда прочитаны все
     s1 = c.post("/api/admin/theory", json={"task_id": tid, "title": "Глава 1", "content_md": "a"}, headers=AUTH).json()["id"]
@@ -102,7 +123,47 @@ def test_flow():
     assert c.delete(f"/api/admin/tasks/{tid}", headers=AUTH).status_code == 200
     assert c.get(f"/api/tasks/{tid}").status_code == 404
 
+    # удаление проекта каскадом удаляет его задания (и всё под ними), соседний проект не трогает
+    assert c.delete(f"/api/admin/projects/{pa}", headers=AUTH).status_code == 200
+    assert c.get(f"/api/tasks/{t1}").status_code == 404
+    assert c.get(f"/api/tasks/{tb}").status_code == 200
+    assert [p["id"] for p in c.get("/api/projects").json()] == [pb]
+
+
+def test_migration_from_pre_projects_db():
+    """Старая БД без проектов: задания уезжают в один проект, прогресс и связи сохраняются."""
+    import sqlite3, subprocess, sys
+    path = os.path.join(tempfile.mkdtemp(), "old.db")
+    con = sqlite3.connect(path)
+    con.executescript("""
+        CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT NOT NULL, sort_order INTEGER NOT NULL);
+        CREATE TABLE progress (task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            section TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (task_id, section));
+        INSERT INTO tasks (title, sort_order) VALUES ('Старое 1', 1), ('Старое 2', 2);
+        INSERT INTO progress VALUES (1, 'problems', 1);
+    """)
+    con.commit()
+    con.close()
+    # отдельный процесс: app читает EGE_DB при импорте
+    code = """
+from fastapi.testclient import TestClient
+import app
+c = TestClient(app.app)
+projects = c.get("/api/projects").json()
+assert [(p["title"], p["tasks"], p["done"]) for p in projects] == [("Подготовка к экзамену", 2, 1)], projects
+tasks = c.get(f"/api/projects/{projects[0]['id']}").json()["tasks"]
+assert [t["title"] for t in tasks] == ["Старое 1", "Старое 2"]
+"""
+    env = {**os.environ, "EGE_DB": path}
+    subprocess.run([sys.executable, "-c", code], env=env, check=True, cwd=os.path.dirname(__file__) or ".")
+    # повторный старт ничего не дублирует; каскад работает и на колонке, добавленной через ALTER
+    subprocess.run([sys.executable, "-c", "import app; assert len(app.q('SELECT * FROM projects')) == 1; "
+                    "app.w('DELETE FROM projects'); assert app.q('SELECT COUNT(*) FROM tasks')[0][0] == 0; "
+                    "assert app.q('SELECT COUNT(*) FROM progress')[0][0] == 0"],
+                   env=env, check=True, cwd=os.path.dirname(__file__) or ".")
+
 
 if __name__ == "__main__":
     test_flow()
+    test_migration_from_pre_projects_db()
     print("ok")

@@ -133,20 +133,21 @@ function AnswerRow({ problem, answers, setAnswers, onSolved }) {
 
 export default function TaskPage() {
   const { id } = useParams();
-  const [tasks, setTasks] = useState([]);
+  const [project, setProject] = useState(null); // проект задания: заголовок + список заданий для сайдбара
   const [task, setTask] = useState(null);
   const [tab, setTab] = useState("theory");
   const [answers, setAnswers] = useState({});
   const [openSection, setOpenSection] = useState(null);
   const [modal, setModal] = useState(null); // id главы, открытой поверх карты
 
-  const loadAll = () => fetch("/api/tasks").then((r) => r.json()).then(setTasks);
-  useEffect(() => { loadAll(); }, []);
+  const loadProject = (pid) => fetch(`/api/projects/${pid}`).then((r) => r.json()).then(setProject);
+  const loadAll = () => task && loadProject(task.project_id);
   useEffect(() => {
     setTab("theory");
     setAnswers({});
     fetch(`/api/tasks/${id}`).then((r) => (r.ok ? r.json() : null)).then((t) => {
       setTask(t);
+      if (t) loadProject(t.project_id);
       setOpenSection(t?.sections?.find((s) => !s.read)?.id ?? null);
       // уже решённые задачи показываем решёнными (ответ подставляем в поле)
       setAnswers(Object.fromEntries((t?.practice || []).filter((p) => p.solved)
@@ -189,11 +190,12 @@ export default function TaskPage() {
     loadAll();
   }
 
+  const tasks = project?.tasks || [];
   const num = tasks.findIndex((t) => t.id === Number(id)) + 1;
   const kicker = num ? `Задание ${num} из ${tasks.length}` : "";
 
   if (!task) {
-    return <Shell tasks={tasks} activeId={Number(id)} kicker={kicker} title="…">
+    return <Shell project={project} activeId={Number(id)} kicker={kicker} title="…">
       <div className="task-view"><p className="empty">Загрузка…</p></div>
     </Shell>;
   }
@@ -216,7 +218,7 @@ export default function TaskPage() {
   );
 
   return (
-    <Shell tasks={tasks} activeId={Number(id)} kicker={kicker} title={task.title}>
+    <Shell project={project} activeId={Number(id)} kicker={kicker} title={task.title}>
       <div className="task-view">
         <div className="tabs">
           {TABS.map(([key, label]) => (

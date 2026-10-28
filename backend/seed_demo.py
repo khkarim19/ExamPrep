@@ -1,5 +1,5 @@
-# Заливает в БД контент из дизайн-макета «Подготовка к экзамену».
-# Затирает существующие задания, задачи и прогресс. Запуск: venv/bin/python seed_demo.py
+# Создаёт демо-проект с контентом из дизайн-макета «Подготовка к экзамену».
+# Пересоздаёт только сам демо-проект, другие проекты не трогает. Запуск: venv/bin/python seed_demo.py
 from app import db
 
 # развёрнутая теория по главам для избранных тем; остальным — одна глава «Основы».
@@ -127,15 +127,19 @@ TOPICS = [
 ]
 
 
+DEMO_PROJECT = "ЕГЭ: математика (демо)"
+
+
 def seed():
     conn = db()
-    conn.execute("DELETE FROM progress")
-    conn.execute("DELETE FROM problems")
-    conn.execute("DELETE FROM theory_sections")
-    conn.execute("DELETE FROM tasks")
+    # пересоздаём только демо-проект (каскадом уходят его задания и прогресс), остальные не трогаем
+    conn.execute("DELETE FROM projects WHERE title = ?", (DEMO_PROJECT,))
+    order = conn.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM projects").fetchone()[0]
+    pid = conn.execute("INSERT INTO projects (title, sort_order) VALUES (?, ?)",
+                       (DEMO_PROJECT, order)).lastrowid
     for i, (title, theory, problems, drills) in enumerate(TOPICS, 1):
         cur = conn.execute(
-            "INSERT INTO tasks (title, sort_order) VALUES (?, ?)", (title, i))
+            "INSERT INTO tasks (project_id, title, sort_order) VALUES (?, ?, ?)", (pid, title, i))
         tid = cur.lastrowid
         sections = SECTIONS_OVERRIDE.get(i, [("Основы", theory, None)])
         ids = []
@@ -157,7 +161,7 @@ def seed():
             "VALUES (?, ?, ?, ?, ?, ?)", rows)
     conn.commit()
     conn.close()
-    print(f"seeded {len(TOPICS)} tasks")
+    print(f"seeded project «{DEMO_PROJECT}» with {len(TOPICS)} tasks")
 
 
 if __name__ == "__main__":

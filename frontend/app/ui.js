@@ -29,7 +29,7 @@ export function Ring({ progress, hole }) {
   );
 }
 
-export function Shell({ tasks, activeId, kicker, title, children }) {
+export function ThemeToggle() {
   const [theme, setThemeState] = useState("dark");
   useEffect(() => { setThemeState(document.documentElement.dataset.theme || "dark"); }, []);
   const setTheme = (t) => {
@@ -37,17 +37,31 @@ export function Shell({ tasks, activeId, kicker, title, children }) {
     document.documentElement.dataset.theme = t;
     setThemeState(t);
   };
+  return (
+    <div className="theme-toggle">
+      <button className={theme === "light" ? "on" : ""} onClick={() => setTheme("light")} title="Светлая тема">☀</button>
+      <button className={theme === "dark" ? "on" : ""} onClick={() => setTheme("dark")} title="Тёмная тема">☾</button>
+    </div>
+  );
+}
 
-  const total = tasks.length * 3;
-  const done = tasks.reduce((n, t) => n + doneCount(t.progress), 0);
-  const percent = total ? Math.round((done / total) * 100) : 0;
+export const percentOf = (done, total) => (total ? Math.round((done / total) * 100) : 0);
+
+// project = {id, title, tasks[]} из /api/projects/{id}; пока грузится — null
+export function Shell({ project, activeId, kicker, title, children }) {
+  const tasks = project?.tasks || [];
+  const percent = percentOf(tasks.reduce((n, t) => n + doneCount(t.progress), 0), tasks.length * 3);
 
   return (
     <div className="app">
       <aside className="sidebar">
         <div className="sidebar-head">
-          <Link href="/" className="brand" title="На главную"><span className="brand-mark" />Подготовка</Link>
-          <div className="overall"><span>Общий прогресс</span><b>{percent}%</b></div>
+          <Link href="/" className="brand" title="Все проекты"><span className="brand-mark" />Подготовка</Link>
+          {project && (
+            <Link href={`/projects/${project.id}`} title="Главная проекта"
+              className={"project-link" + (activeId == null ? " active" : "")}>{project.title}</Link>
+          )}
+          <div className="overall"><span>Прогресс проекта</span><b>{percent}%</b></div>
           <div className="bar"><div style={{ width: percent + "%" }} /></div>
         </div>
         <nav className="task-nav">
@@ -68,10 +82,7 @@ export function Shell({ tasks, activeId, kicker, title, children }) {
             <div className="kicker">{kicker}</div>
             <div className="topbar-title">{title}</div>
           </div>
-          <div className="theme-toggle">
-            <button className={theme === "light" ? "on" : ""} onClick={() => setTheme("light")} title="Светлая тема">☀</button>
-            <button className={theme === "dark" ? "on" : ""} onClick={() => setTheme("dark")} title="Тёмная тема">☾</button>
-          </div>
+          <ThemeToggle />
         </header>
         <div className="scroll">{children}</div>
       </div>

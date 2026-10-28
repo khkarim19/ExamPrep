@@ -1,52 +1,46 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Shell, Ring, doneCount } from "./ui";
+import { ThemeToggle, percentOf } from "./ui";
 
-export default function Home() {
-  const [tasks, setTasks] = useState([]);
+// реестр проектов
+export default function Projects() {
+  const [projects, setProjects] = useState(null);
 
   useEffect(() => {
-    fetch("/api/tasks").then((r) => r.json()).then(setTasks);
+    fetch("/api/projects").then((r) => r.json()).then(setProjects);
   }, []);
 
-  const total = tasks.length * 3;
-  const done = tasks.reduce((n, t) => n + doneCount(t.progress), 0);
-  const percent = total ? Math.round((done / total) * 100) : 0;
-  const fullyDone = tasks.filter((t) => doneCount(t.progress) === 3).length;
-
   return (
-    <Shell tasks={tasks} activeId={null} kicker="Обзор" title="Главная">
-      <div className="home-view">
-        <div className="stats">
-          <div className="stat-card">
-            <div className="stat-label">Готовность к экзамену</div>
-            <div className="stat-row">
-              <span className="stat-big accent">{percent}%</span>
-              <span className="stat-sub">{done} из {total} пунктов</span>
-            </div>
-            <div className="bar big"><div style={{ width: percent + "%" }} /></div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-label">Полностью пройдено</div>
-            <div className="stat-big">{fullyDone}<span className="stat-frac"> / {tasks.length} заданий</span></div>
-          </div>
+    <div className="registry">
+      <header className="topbar">
+        <div>
+          <div className="kicker">Подготовка</div>
+          <div className="topbar-title">Проекты</div>
         </div>
-
-        <div className="section-label">Все задания</div>
+        <ThemeToggle />
+      </header>
+      <div className="home-view">
+        {projects?.length === 0 && (
+          <p className="empty">Проектов пока нет — создайте первый в <Link href="/admin">админке</Link>.</p>
+        )}
         <div className="card-grid">
-          {tasks.map((t, i) => (
-            <Link key={t.id} href={`/tasks/${t.id}`} className="task-card">
-              <span className="nav-text">
-                <span className="card-num">Задание {i + 1}</span>
-                <span className="nav-title">{t.title}</span>
-              </span>
-              <Ring progress={t.progress} hole="var(--card-bg)" />
-            </Link>
-          ))}
+          {projects?.map((p) => {
+            const percent = percentOf(p.done, p.tasks * 3);
+            return (
+              <Link key={p.id} href={`/projects/${p.id}`} className="stat-card project-card">
+                <div className="project-title">{p.title}</div>
+                <div className="stat-row">
+                  <span className="stat-big accent">{percent}%</span>
+                  <span className="stat-sub">заданий: {p.tasks}</span>
+                </div>
+                <div className="bar"><div style={{ width: percent + "%" }} /></div>
+              </Link>
+            );
+          })}
         </div>
         <p><Link className="admin-link" href="/admin">админка</Link></p>
       </div>
-    </Shell>
+    </div>
   );
 }

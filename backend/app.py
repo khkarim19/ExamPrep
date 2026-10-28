@@ -40,9 +40,17 @@ def w(sql, args=(), many=False):
 def init_db():
     with closing(db()) as c:
         c.executescript((ROOT / "schema.sql").read_text())
-    if not q("SELECT 1 FROM tasks LIMIT 1"):
-        w("INSERT INTO tasks (title, sort_order) VALUES (?, ?)",
-          [(f"Задание {i}", i) for i in range(1, 20)], many=True)
+    # ponytail: миграция БД, созданных до проектов: все задания уезжают в один проект.
+    # Удалить, когда локальная БД и docker-том хотя бы раз стартовали с этим кодом.
+    if "project_id" not in [r["name"] for r in q("PRAGMA table_info(tasks)")]:
+        with closing(db()) as c, c:
+            # REFERENCES в ALTER допускает только DEFAULT NULL, поэтому колонка тут nullable
+            c.execute("ALTER TABLE tasks ADD COLUMN project_id INTEGER "
+                      "REFERENCES projects(id) ON DELETE CASCADE")
+            if c.execute("SELECT 1 FROM tasks LIMIT 1").fetchone():
+                pid = c.execute("INSERT INTO projects (title, sort_order) "
+                                "VALUES ('Подготовка к экзамену', 1)").lastrowid
+                c.execute("UPDATE tasks SET project_id = ?", (pid,))
 
 
 init_db()
@@ -84,11 +92,29 @@ def delete(table, row_id):
 
 # ---------- публичное API ----------
 
-@app.get("/api/tasks")
-def list_tasks():
+@app.get("/api/projects")
+def list_projects():
+    """Реестр проектов: число заданий и пройденных пунктов (по 3 на задание)."""
     progress = progress_of()
-    return [{**dict(t), "progress": progress(t["id"])}
-            for t in q("SELECT id, title, sort_order FROM tasks ORDER BY sort_order")]
+    stats = {}
+    for t in q("SELECT id, project_id FROM tasks"):
+        s = stats.setdefault(t["project_id"], {"tasks": 0, "done": 0})
+        s["tasks"] += 1
+        s["done"] += sum(progress(t["id"]).values())
+    return [{**dict(p), **stats.get(p["id"], {"tasks": 0, "done": 0})}
+            for p in q("SELECT * FROM projects ORDER BY sort_order")]
+
+
+@app.get("/api/projects/{project_id}")
+def get_project(project_id: int):
+    rows = q("SELECT * FROM projects WHERE id = ?", (project_id,))
+    if not rows:
+        raise HTTPException(404)
+    progress = progress_of()
+    return {**dict(rows[0]),
+            "tasks": [{**dict(t), "progress": progress(t["id"])} for t in q(
+                "SELECT id, title, sort_order FROM tasks WHERE project_id = ? ORDER BY sort_order",
+                (project_id,))]}
 
 
 @app.get("/api/tasks/{task_id}")
@@ -150,7 +176,12 @@ def set_section_read(section_id: int, r: DoneIn):
 
 # ---------- админка ----------
 
-class TaskIn(BaseModel):
+class TitleIn(BaseModel):
+    title: str | None = None
+
+
+class TaskCreate(BaseModel):
+    project_id: int
     title: str | None = None
 
 
@@ -173,20 +204,49 @@ class Ids(BaseModel):
 
 
 # reorder-роуты объявлены раньше роутов с {id}, чтобы литерал матчился первым
+@app.put("/api/admin/projects/reorder", dependencies=[Depends(admin)])
+def reorder_projects(body: Ids):
+    return reorder("projects", body.ids)
+
+
+@app.post("/api/admin/projects", dependencies=[Depends(admin)])
+def create_project(p: TitleIn):
+    order = q("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM projects")[0][0]
+    cur = w("INSERT INTO projects (title, sort_order) VALUES (?, ?)", (p.title or "Новый проект", order))
+    return {"id": cur.lastrowid}
+
+
+@app.put("/api/admin/projects/{project_id}", dependencies=[Depends(admin)])
+def update_project(project_id: int, p: TitleIn):
+    if not w("UPDATE projects SET title = COALESCE(?, title) WHERE id = ?", (p.title, project_id)).rowcount:
+        raise HTTPException(404)
+    return {"ok": True}
+
+
+@app.delete("/api/admin/projects/{project_id}", dependencies=[Depends(admin)])
+def delete_project(project_id: int):
+    return delete("projects", project_id)  # каскадом: задания → главы, задачи, прогресс
+
+
 @app.put("/api/admin/tasks/reorder", dependencies=[Depends(admin)])
 def reorder_tasks(body: Ids):
     return reorder("tasks", body.ids)
 
 
 @app.post("/api/admin/tasks", dependencies=[Depends(admin)])
-def create_task(t: TaskIn):
-    order = q("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks")[0][0]
-    cur = w("INSERT INTO tasks (title, sort_order) VALUES (?, ?)", (t.title or "Новое задание", order))
+def create_task(t: TaskCreate):
+    order = q("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks WHERE project_id = ?",
+              (t.project_id,))[0][0]
+    try:
+        cur = w("INSERT INTO tasks (project_id, title, sort_order) VALUES (?, ?, ?)",
+                (t.project_id, t.title or "Новое задание", order))
+    except sqlite3.IntegrityError:
+        raise HTTPException(404, "Нет такого проекта")
     return {"id": cur.lastrowid}
 
 
 @app.put("/api/admin/tasks/{task_id}", dependencies=[Depends(admin)])
-def update_task(task_id: int, t: TaskIn):
+def update_task(task_id: int, t: TitleIn):
     if not w("UPDATE tasks SET title = COALESCE(?, title) WHERE id = ?", (t.title, task_id)).rowcount:
         raise HTTPException(404)
     return {"ok": True}

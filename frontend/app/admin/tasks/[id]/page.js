@@ -151,7 +151,7 @@ export default function AdminTask() {
   return (
     <main className="admin-page">
       <h1>{task.title} — редактирование</h1>
-      <p><Link href="/admin">← к списку заданий</Link></p>
+      <p><Link href={`/admin/projects/${task.project_id}`}>← к заданиям проекта</Link></p>
       <p>
         Картинка: <input type="file" accept="image/*" onChange={uploadImage} />
       </p>
