@@ -137,7 +137,14 @@ export default function TaskPage() {
   const [task, setTask] = useState(null);
   const [tab, setTab] = useState("theory");
   const [answers, setAnswers] = useState({});
-  const [openSection, setOpenSection] = useState(null);
+  // главы раскрываются независимо: если открытие одной сворачивало бы другую выше,
+  // страница уезжала бы вверх вместе с нажатым заголовком
+  const [openSections, setOpenSections] = useState(new Set());
+  const toggleSection = (sid) => setOpenSections((prev) => {
+    const next = new Set(prev);
+    next.has(sid) ? next.delete(sid) : next.add(sid);
+    return next;
+  });
   const [modal, setModal] = useState(null); // id главы, открытой поверх карты
 
   const loadProject = (pid) => fetch(`/api/projects/${pid}`).then((r) => r.json()).then(setProject);
@@ -148,7 +155,8 @@ export default function TaskPage() {
     fetch(`/api/tasks/${id}`).then((r) => (r.ok ? r.json() : null)).then((t) => {
       setTask(t);
       if (t) loadProject(t.project_id);
-      setOpenSection(t?.sections?.find((s) => !s.read)?.id ?? null);
+      const firstUnread = t?.sections?.find((s) => !s.read);
+      setOpenSections(new Set(firstUnread ? [firstUnread.id] : []));
       // уже решённые задачи показываем решёнными (ответ подставляем в поле)
       setAnswers(Object.fromEntries((t?.practice || []).filter((p) => p.solved)
         .map((p) => [p.id, { value: p.solution_md, result: true }])));
@@ -243,10 +251,10 @@ export default function TaskPage() {
               </>
             )}
             {task.sections.map((s, i) => {
-              const open = openSection === s.id;
+              const open = openSections.has(s.id);
               return (
                 <div className="card chapter" key={s.id}>
-                  <button className="chapter-head" onClick={() => setOpenSection(open ? null : s.id)}>
+                  <button className="chapter-head" onClick={() => toggleSection(s.id)}>
                     <span className={"read-dot" + (s.read ? " on" : "")}>{s.read ? "✓" : i + 1}</span>
                     <span className="chapter-title">{s.title}</span>
                     <span className={"chevron" + (open ? " up" : "")}>▾</span>
