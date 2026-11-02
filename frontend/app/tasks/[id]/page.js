@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { Shell, MD as Markdown } from "../../ui";
 
@@ -147,8 +147,84 @@ async function jsonFetch(url, method, body) {
   return data;
 }
 
+const shuffle = (arr) => {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+};
+
+// режим карточек: выражение → «Показать значение» → «Знаю» (убрать) или «Повторить» (в конец очереди).
+// Клавиатура: пробел нажимает кнопку в фокусе (показать, затем «Знаю»), ← повторить, → знаю.
+function Flashcards({ entries }) {
+  const [queue, setQueue] = useState(() => shuffle(entries.map((e) => e.id)));
+  const [revealed, setRevealed] = useState(false);
+  const [known, setKnown] = useState(0);
+  const [repeats, setRepeats] = useState(0);
+  const revealRef = useRef(null);
+  const knowRef = useRef(null);
+  const byId = new Map(entries.map((e) => [e.id, e]));
+  const live = queue.filter((id) => byId.has(id)); // запись могли удалить в режиме списка
+  const card = byId.get(live[0]);
+
+  useEffect(() => { (revealed ? knowRef : revealRef).current?.focus(); }, [card?.id, revealed]);
+
+  const answer = (isKnown) => {
+    setQueue(isKnown ? live.slice(1) : [...live.slice(1), live[0]]);
+    isKnown ? setKnown((k) => k + 1) : setRepeats((r) => r + 1);
+    setRevealed(false);
+  };
+  const restart = () => {
+    setQueue(shuffle(entries.map((e) => e.id)));
+    setKnown(0); setRepeats(0); setRevealed(false);
+  };
+  const onKey = (e) => {
+    if (!revealed || !card) return;
+    if (e.key === "ArrowRight") answer(true);
+    if (e.key === "ArrowLeft") answer(false);
+  };
+
+  if (!card) {
+    return (
+      <div className="card flash-card">
+        <div className="flash-term">Готово!</div>
+        <div className="flash-hint">Выражений: {entries.length} · повторов понадобилось: {repeats}</div>
+        <button className="check-btn" ref={revealRef} onClick={restart}>Ещё раз</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flash" onKeyDown={onKey}>
+      <div className="flash-meta">
+        <span>Осталось: {live.length}</span>
+        <span>Знаю: {known} из {entries.length}</span>
+      </div>
+      <div className="card flash-card" onClick={() => !revealed && setRevealed(true)}>
+        <div className="flash-term">{card.term}</div>
+        {revealed ? (
+          card.definition
+            ? <div className="md flash-def"><Markdown>{card.definition}</Markdown></div>
+            : <p className="empty">Значение не задано</p>
+        ) : (
+          <button className="check-btn" ref={revealRef} onClick={() => setRevealed(true)}>Показать значение</button>
+        )}
+      </div>
+      {revealed && (
+        <div className="flash-actions">
+          <button className="done-btn" onClick={() => answer(false)}>← Повторить</button>
+          <button className="done-btn done" ref={knowRef} onClick={() => answer(true)}>Знаю →</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // словарь задания: выражение → значение (markdown и формулы), по алфавиту
 function Glossary({ taskId, entries, onChange }) {
+  const [mode, setMode] = useState("list"); // list | cards
   const [term, setTerm] = useState("");
   const [definition, setDefinition] = useState("");
   const [error, setError] = useState(null);
@@ -183,10 +259,25 @@ function Glossary({ taskId, entries, onChange }) {
     } catch (err) { alert(err.message); }
   }
 
+  const cards = mode === "cards" && entries.length > 0;
+
   return (
     <>
-      <span className="drill-score">Словарь · {entries.length ? `выражений: ${entries.length}` : "пока пусто"}</span>
+      <div className="gloss-top">
+        <span className="drill-score">Словарь · {entries.length ? `выражений: ${entries.length}` : "пока пусто"}</span>
+        {entries.length > 0 && (
+          <div className="mode-toggle" role="group" aria-label="Режим словаря">
+            {[["list", "Список"], ["cards", "Карточки"]].map(([m, label]) => (
+              <button key={m} className={mode === m ? "on" : ""} aria-pressed={mode === m}
+                onClick={() => setMode(m)}>{label}</button>
+            ))}
+          </div>
+        )}
+      </div>
 
+      {cards && <Flashcards entries={entries} />}
+
+      {!cards && <>
       <form className="card gloss-form" onSubmit={add}>
         <input className="field" value={term} onChange={(e) => { setTerm(e.target.value); setError(null); }}
           placeholder="Выражение" aria-label="Выражение" maxLength={200} />
@@ -231,6 +322,7 @@ function Glossary({ taskId, entries, onChange }) {
           )}
         </div>
       ))}
+      </>}
     </>
   );
 }

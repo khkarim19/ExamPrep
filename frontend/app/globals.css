@@ -204,6 +204,26 @@ textarea.field { min-height: 84px; resize: vertical; }
 .gloss-head { display: flex; align-items: baseline; gap: 8px; }
 .gloss-term { font-weight: 700; font-size: 15.5px; }
 .gloss-def { margin-top: 6px; font-size: 15px; line-height: 1.55; }
+.gloss-top { align-self: stretch; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mode-toggle { display: flex; background: var(--track); border-radius: 999px; padding: 3px; gap: 2px; }
+.mode-toggle button {
+  border: none; border-radius: 999px; padding: 6px 14px; background: transparent;
+  color: var(--text-muted); font-size: 13px; font-weight: 600;
+}
+.mode-toggle button.on { background: var(--card-bg); color: var(--text); }
+
+/* карточки для заучивания */
+.flash { align-self: stretch; display: flex; flex-direction: column; gap: 14px; }
+.flash-meta { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; color: var(--text-muted); }
+.flash-card {
+  align-self: stretch; min-height: 240px; padding: 32px 28px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; text-align: center;
+}
+.flash-term { font-family: var(--font-manrope); font-size: 26px; font-weight: 800; letter-spacing: -0.01em; }
+.flash-def { max-width: 560px; font-size: 16px; line-height: 1.6; text-align: left; animation: fadeUp .2s ease; }
+.flash-hint { font-size: 13px; color: var(--text-faint); }
+.flash-actions { display: flex; justify-content: center; gap: 12px; }
+.flash-actions .done-btn { margin-top: 0; }
 .card { align-self: stretch; background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; }
 .prob-num { font-size: 12.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
 .prob-q { font-size: 15.5px; font-weight: 600; margin-bottom: 14px; }
