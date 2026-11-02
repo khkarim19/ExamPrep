@@ -93,6 +93,46 @@ function Cut({ md, label }) {
   );
 }
 
+// поле для собственного решения справа от задачи; «Зафиксировать» (или ⌘/Ctrl+Enter) сохраняет на сервер
+function NoteBox({ problem, num }) {
+  const [text, setText] = useState(problem.user_note || "");
+  const [saved, setSaved] = useState(problem.user_note || "");
+  const [state, setState] = useState("idle"); // idle | saving | error
+  const dirty = text !== saved;
+
+  async function save() {
+    if (!dirty || state === "saving") return;
+    setState("saving");
+    const res = await fetch(`/api/problems/${problem.id}/note`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    }).catch(() => null);
+    if (res?.ok) { setSaved(text); setState("idle"); } else setState("error");
+  }
+
+  return (
+    <div className="note">
+      <textarea
+        value={text}
+        onChange={(e) => { setText(e.target.value); if (state === "error") setState("idle"); }}
+        onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === "Enter" && save()}
+        placeholder="Ваше решение — попробуйте сами, прежде чем открыть разбор"
+        aria-label={`Ваше решение задачи ${num}`}
+        maxLength={20000}
+      />
+      <div className="note-bar">
+        <button className="check-btn" onClick={save} disabled={!dirty || state === "saving"}>
+          {state === "saving" ? "Сохраняю…" : "Зафиксировать"}
+        </button>
+        {state === "error" && <span className="note-status bad">Не сохранилось, попробуйте ещё раз</span>}
+        {state === "idle" && !dirty && saved && <span className="note-status ok">✓ Зафиксировано</span>}
+        {state === "idle" && dirty && saved && <span className="note-status">есть несохранённые правки</span>}
+      </div>
+    </div>
+  );
+}
+
 // тело главы: текст + кнопка «Прочитал» (используется и в аккордеоне, и в модалке карты)
 function ChapterBody({ s, onRead }) {
   return (
@@ -269,15 +309,18 @@ export default function TaskPage() {
         )}
 
         {tab === "problems" && (
-          <div className="pane">
+          <div className="pane wide">
             {task.examples.length === 0 && <p className="empty">Пока пусто.</p>}
             {task.examples.map((p, i) => (
-              <div className="card" key={p.id}>
-                <div className="prob-num">Задача {i + 1}</div>
-                <div className="prob-q md"><Markdown>{p.statement_md}</Markdown></div>
-                {p.explanation_md
-                  ? <Cut md={p.explanation_md} label="Показать решение" />
-                  : <p className="empty">Разбор решения пока не добавлен.</p>}
+              <div className="problem-row" key={p.id}>
+                <div className="card">
+                  <div className="prob-num">Задача {i + 1}</div>
+                  <div className="prob-q md"><Markdown>{p.statement_md}</Markdown></div>
+                  {p.explanation_md
+                    ? <Cut md={p.explanation_md} label="Показать решение" />
+                    : <p className="empty">Разбор решения пока не добавлен.</p>}
+                </div>
+                <NoteBox problem={p} num={i + 1} />
               </div>
             ))}
             <DoneBtn section="problems" />

@@ -119,6 +119,15 @@ def test_flow():
     detail = c.get(f"/api/tasks/{tid}").json()
     assert detail["practice"][0]["sort_order"] < detail["examples"][0]["sort_order"]
 
+    # решение пользователя («Зафиксировать»): сохраняется, перезаписывается, валидируется
+    assert detail["examples"][0]["user_note"] == ""
+    assert c.put(f"/api/problems/{p1}/note", json={"text": "мой разбор"}).status_code == 200
+    assert c.get(f"/api/tasks/{tid}").json()["examples"][0]["user_note"] == "мой разбор"
+    assert c.put(f"/api/problems/{p1}/note", json={"text": ""}).status_code == 200
+    assert c.get(f"/api/tasks/{tid}").json()["examples"][0]["user_note"] == ""
+    assert c.put("/api/problems/999/note", json={"text": "x"}).status_code == 404
+    assert c.put(f"/api/problems/{p1}/note", json={"text": "x" * 20001}).status_code == 422
+
     # удаление задания каскадом чистит проблемы и прогресс
     assert c.delete(f"/api/admin/tasks/{tid}", headers=AUTH).status_code == 200
     assert c.get(f"/api/tasks/{tid}").status_code == 404
@@ -130,40 +139,34 @@ def test_flow():
     assert [p["id"] for p in c.get("/api/projects").json()] == [pb]
 
 
-def test_migration_from_pre_projects_db():
-    """Старая БД без проектов: задания уезжают в один проект, прогресс и связи сохраняются."""
+def test_migration_adds_user_note():
+    """Старая БД без колонки user_note: колонка добавляется, данные задач сохраняются."""
     import sqlite3, subprocess, sys
     path = os.path.join(tempfile.mkdtemp(), "old.db")
     con = sqlite3.connect(path)
     con.executescript("""
-        CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT NOT NULL, sort_order INTEGER NOT NULL);
-        CREATE TABLE progress (task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-            section TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (task_id, section));
-        INSERT INTO tasks (title, sort_order) VALUES ('Старое 1', 1), ('Старое 2', 2);
-        INSERT INTO progress VALUES (1, 'problems', 1);
+        CREATE TABLE projects (id INTEGER PRIMARY KEY, title TEXT NOT NULL, sort_order INTEGER NOT NULL);
+        CREATE TABLE tasks (id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL REFERENCES projects(id)
+            ON DELETE CASCADE, title TEXT NOT NULL, sort_order INTEGER NOT NULL);
+        CREATE TABLE problems (id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES tasks(id)
+            ON DELETE CASCADE, kind TEXT NOT NULL, statement_md TEXT NOT NULL DEFAULT '',
+            solution_md TEXT NOT NULL DEFAULT '', explanation_md TEXT NOT NULL DEFAULT '',
+            solved INTEGER NOT NULL DEFAULT 0, sort_order INTEGER NOT NULL);
+        INSERT INTO projects VALUES (1, 'П', 1);
+        INSERT INTO tasks VALUES (1, 1, 'Т', 1);
+        INSERT INTO problems (task_id, kind, statement_md, sort_order) VALUES (1, 'example', 'старое условие', 1);
     """)
     con.commit()
     con.close()
-    # отдельный процесс: app читает EGE_DB при импорте
-    code = """
-from fastapi.testclient import TestClient
-import app
-c = TestClient(app.app)
-projects = c.get("/api/projects").json()
-assert [(p["title"], p["tasks"], p["done"]) for p in projects] == [("Подготовка к экзамену", 2, 1)], projects
-tasks = c.get(f"/api/projects/{projects[0]['id']}").json()["tasks"]
-assert [t["title"] for t in tasks] == ["Старое 1", "Старое 2"]
-"""
-    env = {**os.environ, "EGE_DB": path}
-    subprocess.run([sys.executable, "-c", code], env=env, check=True, cwd=os.path.dirname(__file__) or ".")
-    # повторный старт ничего не дублирует; каскад работает и на колонке, добавленной через ALTER
-    subprocess.run([sys.executable, "-c", "import app; assert len(app.q('SELECT * FROM projects')) == 1; "
-                    "app.w('DELETE FROM projects'); assert app.q('SELECT COUNT(*) FROM tasks')[0][0] == 0; "
-                    "assert app.q('SELECT COUNT(*) FROM progress')[0][0] == 0"],
-                   env=env, check=True, cwd=os.path.dirname(__file__) or ".")
+    # отдельный процесс: app читает EGE_DB и мигрирует при импорте; второй запуск проверяет повторный старт
+    code = ("import app; p = app.q('SELECT * FROM problems')[0]; "
+            "assert p['statement_md'] == 'старое условие' and p['user_note'] == '', dict(p)")
+    for _ in range(2):
+        subprocess.run([sys.executable, "-c", code], env={**os.environ, "EGE_DB": path},
+                       check=True, cwd=os.path.dirname(__file__) or ".")
 
 
 if __name__ == "__main__":
     test_flow()
-    test_migration_from_pre_projects_db()
+    test_migration_adds_user_note()
     print("ok")

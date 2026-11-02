@@ -9,7 +9,7 @@ from typing import Literal
 from fastapi import Depends, FastAPI, HTTPException, UploadFile
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).parent
 DB_PATH = Path(os.environ.get("EGE_DB", ROOT / "ege.db"))
@@ -40,17 +40,10 @@ def w(sql, args=(), many=False):
 def init_db():
     with closing(db()) as c:
         c.executescript((ROOT / "schema.sql").read_text())
-    # ponytail: миграция БД, созданных до проектов: все задания уезжают в один проект.
+    # ponytail: миграция БД, созданных до поля user_note.
     # Удалить, когда локальная БД и docker-том хотя бы раз стартовали с этим кодом.
-    if "project_id" not in [r["name"] for r in q("PRAGMA table_info(tasks)")]:
-        with closing(db()) as c, c:
-            # REFERENCES в ALTER допускает только DEFAULT NULL, поэтому колонка тут nullable
-            c.execute("ALTER TABLE tasks ADD COLUMN project_id INTEGER "
-                      "REFERENCES projects(id) ON DELETE CASCADE")
-            if c.execute("SELECT 1 FROM tasks LIMIT 1").fetchone():
-                pid = c.execute("INSERT INTO projects (title, sort_order) "
-                                "VALUES ('Подготовка к экзамену', 1)").lastrowid
-                c.execute("UPDATE tasks SET project_id = ?", (pid,))
+    if "user_note" not in [r["name"] for r in q("PRAGMA table_info(problems)")]:
+        w("ALTER TABLE problems ADD COLUMN user_note TEXT NOT NULL DEFAULT ''")
 
 
 init_db()
@@ -156,6 +149,18 @@ def set_progress(task_id: int, p: ProgressIn):
 
 class DoneIn(BaseModel):
     done: bool
+
+
+class NoteIn(BaseModel):
+    text: str = Field(max_length=20000)
+
+
+@app.put("/api/problems/{problem_id}/note")
+def set_problem_note(problem_id: int, n: NoteIn):
+    """Решение пользователя к задаче — поле справа с кнопкой «Зафиксировать»."""
+    if not w("UPDATE problems SET user_note = ? WHERE id = ?", (n.text, problem_id)).rowcount:
+        raise HTTPException(404)
+    return {"ok": True}
 
 
 @app.put("/api/problems/{problem_id}/solved")

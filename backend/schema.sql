@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS problems (
   solution_md TEXT NOT NULL DEFAULT '',  -- короткий ответ для проверки (только тренировка)
   explanation_md TEXT NOT NULL DEFAULT '',  -- разбор решения, показывается под катом
   solved INTEGER NOT NULL DEFAULT 0,  -- правильный ответ зафиксирован (тренировка)
+  user_note TEXT NOT NULL DEFAULT '',  -- решение пользователя из поля справа («Зафиксировать»)
   sort_order INTEGER NOT NULL
 );
 

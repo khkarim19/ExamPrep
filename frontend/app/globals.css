@@ -31,7 +31,37 @@ button { cursor: pointer; font-family: inherit; }
 .sidebar {
   width: 288px; flex: none; display: flex; flex-direction: column;
   background: var(--sidebar-bg); border-right: 1px solid var(--border);
+  transition: width .2s ease;
 }
+
+/* кнопка сворачивания меню — внизу сайдбара */
+.sidebar-toggle {
+  flex: none; align-self: flex-end; margin: 8px 12px 14px; width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+  border: 1px solid var(--border); border-radius: 10px; background: transparent;
+  color: var(--text-muted); font-size: 20px; line-height: 1;
+}
+.sidebar-toggle:hover { background: var(--hover); color: var(--text); }
+.sidebar-toggle .chev { display: inline-block; margin-top: -2px; transition: transform .2s ease; }
+.nav-idx { display: none; }
+
+/* свёрнутое меню: узкая полоса — логотип, номера заданий с кольцами прогресса, кнопка */
+[data-sidebar="collapsed"] .sidebar { width: 72px; }
+[data-sidebar="collapsed"] .sidebar-head { padding: 22px 10px 16px; }
+[data-sidebar="collapsed"] .brand { justify-content: center; margin: -8px 0 18px; }
+[data-sidebar="collapsed"] .brand-text,
+[data-sidebar="collapsed"] .project-link,
+[data-sidebar="collapsed"] .overall,
+[data-sidebar="collapsed"] .nav-text { display: none; }
+[data-sidebar="collapsed"] .task-nav { padding: 10px 8px 16px; }
+[data-sidebar="collapsed"] .task-nav a { justify-content: center; gap: 6px; padding: 9px 0; }
+[data-sidebar="collapsed"] .nav-idx {
+  display: block; min-width: 14px; text-align: right;
+  font-size: 12.5px; font-weight: 600; color: var(--text-muted);
+}
+[data-sidebar="collapsed"] .task-nav a.active .nav-idx { color: var(--text); }
+[data-sidebar="collapsed"] .sidebar-toggle { align-self: center; }
+[data-sidebar="collapsed"] .sidebar-toggle .chev { transform: rotate(180deg); }
 .sidebar-head { padding: 22px 20px 16px; border-bottom: 1px solid var(--border); }
 /* бренд — ссылка на главную; отрицательные отступы дают область нажатия шире текста */
 .brand {
@@ -97,7 +127,7 @@ button { cursor: pointer; font-family: inherit; }
 .scroll { flex: 1; overflow-y: auto; }
 
 /* home */
-.home-view { padding: 36px 40px; max-width: 980px; }
+.home-view { padding: 36px 40px; max-width: 980px; margin: 0 auto; }
 .stats { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 28px; }
 .stat-card { flex: 1; min-width: 220px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 22px 24px; }
 .stat-label { font-size: 12.5px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 10px; }
@@ -118,7 +148,9 @@ button { cursor: pointer; font-family: inherit; }
 .admin-link { color: var(--text-faint); font-size: 13px; }
 
 /* task view */
-.task-view { padding: 32px 40px; max-width: 760px; }
+/* страница задания по центру; ширина рассчитана на две колонки вкладки «Задачи»,
+   текст теории и тренировки — в колонке удобной для чтения ширины (.pane) */
+.task-view { padding: 32px 40px; max-width: 1120px; margin: 0 auto; container-type: inline-size; }
 .tabs { display: flex; gap: 26px; border-bottom: 1.5px solid var(--border); margin-bottom: 28px; }
 .tabs button {
   display: flex; align-items: center; gap: 6px; padding: 10px 1px 12px; margin-bottom: -1.5px;
@@ -130,7 +162,28 @@ button { cursor: pointer; font-family: inherit; }
 .task-h { font-family: var(--font-manrope); font-size: 30px; font-weight: 800; letter-spacing: -0.01em; margin: 0 0 6px; }
 .task-sub { font-size: 15px; color: var(--text-muted); margin-bottom: 28px; }
 
-.pane { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; animation: fadeUp .25s ease; }
+.pane { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; animation: fadeUp .25s ease; max-width: 760px; }
+.pane.wide { max-width: none; }
+
+/* вкладка «Задачи»: задача слева, поле для своего решения справа; на узком — друг под другом */
+.problem-row {
+  align-self: stretch; display: grid; gap: 14px 20px;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+}
+@container (max-width: 820px) { .problem-row { grid-template-columns: minmax(0, 1fr); } }
+.note { display: flex; flex-direction: column; gap: 10px; }
+.note textarea {
+  flex: 1; min-height: 150px; margin: 0; resize: vertical; padding: 14px 16px;
+  font: 14.5px/1.55 var(--font-inter), system-ui, sans-serif;
+  background: var(--card-bg); color: var(--text); border: 1px solid var(--border); border-radius: 14px;
+}
+.note textarea:focus { outline: none; border-color: var(--accent); }
+.note textarea::placeholder { color: var(--text-faint); }
+.note-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.note-status { font-size: 13px; color: var(--text-faint); }
+.note-status.ok { color: var(--accent); font-weight: 600; }
+.note-status.bad { color: var(--error); }
+.check-btn:disabled { opacity: .45; cursor: default; }
 .card { align-self: stretch; background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; }
 .prob-num { font-size: 12.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
 .prob-q { font-size: 15.5px; font-weight: 600; margin-bottom: 14px; }
@@ -242,4 +295,9 @@ textarea {
   .task-nav { max-height: 40vh; }
   .theory-edit { grid-template-columns: 1fr; }
   .home-view, .task-view, .admin-page { padding: 20px; }
+  /* меню сверху: стрелка смотрит вверх/вниз, свёрнутое меню прячет список заданий */
+  .sidebar-toggle .chev { transform: rotate(90deg); }
+  [data-sidebar="collapsed"] .sidebar { width: auto; }
+  [data-sidebar="collapsed"] .task-nav { display: none; }
+  [data-sidebar="collapsed"] .sidebar-toggle .chev { transform: rotate(-90deg); }
 }

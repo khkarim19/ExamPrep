@@ -11,8 +11,10 @@ export default function RootLayout({ children }) {
   return (
     <html lang="ru" suppressHydrationWarning>
       <body className={`${inter.variable} ${manrope.variable}`}>
+        {/* тема и свёрнутость меню выставляются до отрисовки, чтобы не мигали */}
         <script dangerouslySetInnerHTML={{ __html:
-          `try{document.documentElement.dataset.theme=localStorage.getItem("examTheme")||"dark"}catch(e){}` }} />
+          `try{var d=document.documentElement;d.dataset.theme=localStorage.getItem("examTheme")||"dark";` +
+          `d.dataset.sidebar=localStorage.getItem("sidebar")||"open"}catch(e){}` }} />
         {children}
       </body>
     </html>
