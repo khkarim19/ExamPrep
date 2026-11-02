@@ -34,6 +34,14 @@ CREATE TABLE IF NOT EXISTS problems (
   sort_order INTEGER NOT NULL
 );
 
+-- словарь задания: выражение и его значение (редактируется прямо на сайте)
+CREATE TABLE IF NOT EXISTS glossary (
+  id INTEGER PRIMARY KEY,
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  term TEXT NOT NULL,
+  definition TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS progress (
   task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   section TEXT NOT NULL CHECK (section IN ('theory', 'problems', 'practice')),

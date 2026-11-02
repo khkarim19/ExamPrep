@@ -128,9 +128,30 @@ def test_flow():
     assert c.put("/api/problems/999/note", json={"text": "x"}).status_code == 404
     assert c.put(f"/api/problems/{p1}/note", json={"text": "x" * 20001}).status_code == 422
 
+    # словарь: CRUD, уникальность выражения без учёта регистра (и для кириллицы), валидация
+    G = f"/api/tasks/{tid}/glossary"
+    assert c.get(f"/api/tasks/{tid}").json()["glossary"] == []
+    r = c.post(G, json={"term": "  Брокер ", "definition": "сервер очереди"})
+    assert r.status_code == 201 and r.json()["term"] == "Брокер"
+    g1 = r.json()["id"]
+    g2 = c.post(G, json={"term": "Offset"}).json()["id"]
+    assert c.post(G, json={"term": "брокер"}).status_code == 409          # тот же термин в другом регистре
+    assert c.post(G, json={"term": "   "}).status_code == 422
+    assert c.post(G, json={"term": "x" * 201}).status_code == 422
+    assert c.post("/api/tasks/999/glossary", json={"term": "x"}).status_code == 404
+    assert c.put(f"/api/glossary/{g2}", json={"definition": "номер сообщения в партиции"}).json() == \
+        {"id": g2, "term": "Offset", "definition": "номер сообщения в партиции"}
+    assert c.put(f"/api/glossary/{g2}", json={"term": "БРОКЕР"}).status_code == 409   # занято другой записью
+    assert c.put(f"/api/glossary/{g1}", json={"term": "брокер"}).status_code == 200   # своя же запись — можно
+    assert c.put("/api/glossary/999", json={"term": "x"}).status_code == 404
+    assert c.delete(f"/api/glossary/{g2}").status_code == 200
+    assert [(g["term"], g["definition"]) for g in c.get(f"/api/tasks/{tid}").json()["glossary"]] == \
+        [("брокер", "сервер очереди")]
+
     # удаление задания каскадом чистит проблемы и прогресс
     assert c.delete(f"/api/admin/tasks/{tid}", headers=AUTH).status_code == 200
     assert c.get(f"/api/tasks/{tid}").status_code == 404
+    assert app.q("SELECT COUNT(*) FROM glossary WHERE task_id = ?", (tid,))[0][0] == 0  # словарь ушёл вместе с заданием
 
     # удаление проекта каскадом удаляет его задания (и всё под ними), соседний проект не трогает
     assert c.delete(f"/api/admin/projects/{pa}", headers=AUTH).status_code == 200

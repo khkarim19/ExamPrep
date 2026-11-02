@@ -5,6 +5,7 @@ import { Shell, MD as Markdown } from "../../ui";
 
 const TABS = [
   ["theory", "Теория"],
+  ["glossary", "Словарь"],
   ["problems", "Задачи"],
   ["practice", "Тренировка"],
 ];
@@ -130,6 +131,107 @@ function NoteBox({ problem, num }) {
         {state === "idle" && dirty && saved && <span className="note-status">есть несохранённые правки</span>}
       </div>
     </div>
+  );
+}
+
+async function jsonFetch(url, method, body) {
+  const res = await fetch(url, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: body && JSON.stringify(body),
+  }).catch(() => null);
+  if (!res) throw new Error("Нет связи с сервером");
+  const data = await res.json().catch(() => ({}));
+  // 409/404 приходят строкой в detail, ошибки валидации — списком
+  if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Проверьте заполнение полей");
+  return data;
+}
+
+// словарь задания: выражение → значение (markdown и формулы), по алфавиту
+function Glossary({ taskId, entries, onChange }) {
+  const [term, setTerm] = useState("");
+  const [definition, setDefinition] = useState("");
+  const [error, setError] = useState(null);
+  const [editing, setEditing] = useState(null); // {id, term, definition, error}
+  const sorted = [...entries].sort((a, b) => a.term.localeCompare(b.term, "ru", { sensitivity: "base" }));
+  const submitOnCmdEnter = (e) => (e.metaKey || e.ctrlKey) && e.key === "Enter" && e.currentTarget.form.requestSubmit();
+
+  async function add(e) {
+    e.preventDefault();
+    try {
+      const created = await jsonFetch(`/api/tasks/${taskId}/glossary`, "POST", { term, definition });
+      onChange([...entries, created]);
+      setTerm(""); setDefinition(""); setError(null);
+    } catch (err) { setError(err.message); }
+  }
+
+  async function save(e) {
+    e.preventDefault();
+    try {
+      const updated = await jsonFetch(`/api/glossary/${editing.id}`, "PUT",
+        { term: editing.term, definition: editing.definition });
+      onChange(entries.map((x) => (x.id === updated.id ? updated : x)));
+      setEditing(null);
+    } catch (err) { setEditing({ ...editing, error: err.message }); }
+  }
+
+  async function remove(entry) {
+    if (!confirm(`Удалить «${entry.term}» из словаря?`)) return;
+    try {
+      await jsonFetch(`/api/glossary/${entry.id}`, "DELETE");
+      onChange(entries.filter((x) => x.id !== entry.id));
+    } catch (err) { alert(err.message); }
+  }
+
+  return (
+    <>
+      <span className="drill-score">Словарь · {entries.length ? `выражений: ${entries.length}` : "пока пусто"}</span>
+
+      <form className="card gloss-form" onSubmit={add}>
+        <input className="field" value={term} onChange={(e) => { setTerm(e.target.value); setError(null); }}
+          placeholder="Выражение" aria-label="Выражение" maxLength={200} />
+        <textarea className="field" value={definition} onChange={(e) => setDefinition(e.target.value)}
+          onKeyDown={submitOnCmdEnter} placeholder="Значение — можно markdown и формулы"
+          aria-label="Значение" maxLength={5000} />
+        <div className="note-bar">
+          <button className="check-btn" disabled={!term.trim()}>Добавить</button>
+          {error && <span className="note-status bad">{error}</span>}
+        </div>
+      </form>
+
+      {sorted.map((g) => (
+        <div className="card gloss-item" key={g.id}>
+          {editing?.id === g.id ? (
+            <form className="gloss-form" onSubmit={save}>
+              <input className="field" value={editing.term} aria-label="Выражение" maxLength={200} autoFocus
+                onChange={(e) => setEditing({ ...editing, term: e.target.value, error: null })} />
+              <textarea className="field" value={editing.definition} aria-label="Значение" maxLength={5000}
+                onKeyDown={submitOnCmdEnter}
+                onChange={(e) => setEditing({ ...editing, definition: e.target.value })} />
+              <div className="note-bar">
+                <button className="check-btn" disabled={!editing.term.trim()}>Сохранить</button>
+                <button type="button" className="link-btn" onClick={() => setEditing(null)}>Отмена</button>
+                {editing.error && <span className="note-status bad">{editing.error}</span>}
+              </div>
+            </form>
+          ) : (
+            <>
+              <div className="gloss-head">
+                <span className="gloss-term">{g.term}</span>
+                <span className="spacer" />
+                <button className="link-btn" onClick={() => setEditing({ ...g, error: null })}
+                  aria-label={`Изменить «${g.term}»`}>изменить</button>
+                <button className="link-btn danger" onClick={() => remove(g)}
+                  aria-label={`Удалить «${g.term}»`}>удалить</button>
+              </div>
+              {g.definition
+                ? <div className="md gloss-def"><Markdown>{g.definition}</Markdown></div>
+                : <p className="empty">Значение не задано</p>}
+            </>
+          )}
+        </div>
+      ))}
+    </>
   );
 }
 
@@ -306,6 +408,11 @@ export default function TaskPage() {
                 </div>
               );
             })}
+          </div>
+
+          <div className="pane" hidden={tab !== "glossary"}>
+            <Glossary key={task.id} taskId={task.id} entries={task.glossary}
+              onChange={(glossary) => setTask((t) => ({ ...t, glossary }))} />
           </div>
 
           <div className="pane wide" hidden={tab !== "problems"}>

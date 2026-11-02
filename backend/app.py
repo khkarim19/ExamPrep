@@ -121,7 +121,9 @@ def get_task(task_id: int):
             "sections": [dict(s) for s in q(
                 "SELECT * FROM theory_sections WHERE task_id = ? ORDER BY sort_order", (task_id,))],
             "examples": [p for p in probs if p["kind"] == "example"],
-            "practice": [p for p in probs if p["kind"] == "practice"]}
+            "practice": [p for p in probs if p["kind"] == "practice"],
+            "glossary": [dict(g) for g in q(
+                "SELECT id, term, definition FROM glossary WHERE task_id = ? ORDER BY id", (task_id,))]}
 
 
 class ProgressIn(BaseModel):
@@ -170,6 +172,58 @@ def set_problem_solved(problem_id: int, r: DoneIn):
              (int(r.done), problem_id)).rowcount:
         raise HTTPException(404)
     return {"ok": True}
+
+
+# ---------- словарь задания (CRUD на сайте, как и записи решений) ----------
+
+class GlossaryIn(BaseModel):
+    term: str = Field(min_length=1, max_length=200)
+    definition: str = Field(default="", max_length=5000)
+
+
+class GlossaryPatch(BaseModel):
+    term: str | None = Field(default=None, min_length=1, max_length=200)
+    definition: str | None = Field(default=None, max_length=5000)
+
+
+def glossary_term(task_id, term, exclude_id=None):
+    """Выражение без пробелов по краям; одно и то же выражение в задании — один раз (без учёта регистра)."""
+    term = term.strip()
+    if not term:
+        raise HTTPException(422, "Выражение не может быть пустым")
+    # ponytail: сравнение в Python — SQLite-овский NOCASE не понимает кириллицу; терминов в задании мало
+    if any(r["id"] != exclude_id and r["term"].casefold() == term.casefold()
+           for r in q("SELECT id, term FROM glossary WHERE task_id = ?", (task_id,))):
+        raise HTTPException(409, "Такое выражение уже есть в словаре")
+    return term
+
+
+@app.post("/api/tasks/{task_id}/glossary", status_code=201)
+def create_glossary_entry(task_id: int, g: GlossaryIn):
+    term = glossary_term(task_id, g.term)
+    try:
+        cur = w("INSERT INTO glossary (task_id, term, definition) VALUES (?, ?, ?)",
+                (task_id, term, g.definition.strip()))
+    except sqlite3.IntegrityError:
+        raise HTTPException(404, "Нет такого задания")
+    return {"id": cur.lastrowid, "term": term, "definition": g.definition.strip()}
+
+
+@app.put("/api/glossary/{entry_id}")
+def update_glossary_entry(entry_id: int, g: GlossaryPatch):
+    rows = q("SELECT task_id FROM glossary WHERE id = ?", (entry_id,))
+    if not rows:
+        raise HTTPException(404)
+    term = None if g.term is None else glossary_term(rows[0]["task_id"], g.term, exclude_id=entry_id)
+    definition = None if g.definition is None else g.definition.strip()
+    w("UPDATE glossary SET term = COALESCE(?, term), definition = COALESCE(?, definition) WHERE id = ?",
+      (term, definition, entry_id))
+    return dict(q("SELECT id, term, definition FROM glossary WHERE id = ?", (entry_id,))[0])
+
+
+@app.delete("/api/glossary/{entry_id}")
+def delete_glossary_entry(entry_id: int):
+    return delete("glossary", entry_id)
 
 
 @app.put("/api/theory/{section_id}/read")

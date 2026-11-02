@@ -185,6 +185,25 @@ button { cursor: pointer; font-family: inherit; }
 .note-status.ok { color: var(--accent); font-weight: 600; }
 .note-status.bad { color: var(--error); }
 .check-btn:disabled { opacity: .45; cursor: default; }
+
+/* поля ввода в стиле карточек (словарь) */
+.field {
+  width: 100%; margin: 0; padding: 10px 14px; border-radius: 10px; outline: none;
+  font: 14.5px/1.5 var(--font-inter), system-ui, sans-serif;
+  background: var(--bg); color: var(--text); border: 1.5px solid var(--border);
+}
+.field:focus { border-color: var(--accent); }
+.field::placeholder { color: var(--text-faint); }
+textarea.field { min-height: 84px; resize: vertical; }
+.link-btn { background: none; border: none; padding: 2px 4px; color: var(--text-faint); font-size: 13px; }
+.link-btn:hover { color: var(--text); }
+.link-btn.danger:hover { color: var(--error); }
+
+/* словарь */
+.gloss-form { display: flex; flex-direction: column; gap: 10px; }
+.gloss-head { display: flex; align-items: baseline; gap: 8px; }
+.gloss-term { font-weight: 700; font-size: 15.5px; }
+.gloss-def { margin-top: 6px; font-size: 15px; line-height: 1.55; }
 .card { align-self: stretch; background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; }
 .prob-num { font-size: 12.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
 .prob-q { font-size: 15.5px; font-weight: 600; margin-bottom: 14px; }
