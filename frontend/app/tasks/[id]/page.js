@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { Shell, MD as Markdown } from "../../ui";
+import { Shell, Icon, MD as Markdown } from "../../ui";
 
 const TABS = [
   ["theory", "Теория"],
@@ -64,8 +64,8 @@ function MindMap({ title, sections, onPick }) {
         );
       })}
       <rect x={pos.get(0).x - centerW / 2} y={pos.get(0).y - 17} width={centerW} height={34} rx={17}
-        fill="var(--accent-soft)" stroke="var(--accent)" strokeWidth="1.5" />
-      <text x={pos.get(0).x} y={pos.get(0).y + 4.5} textAnchor="middle" fontSize="13" fontWeight="700"
+        fill="var(--raised)" stroke="var(--border-strong)" strokeWidth="1" />
+      <text x={pos.get(0).x} y={pos.get(0).y + 4.5} textAnchor="middle" fontSize="13" fontWeight="600"
         fill="var(--text)">{centerLabel}</text>
       {placed.map(({ s }) => {
         const p = pos.get(s.id);
@@ -73,8 +73,8 @@ function MindMap({ title, sections, onPick }) {
           <g key={s.id} className="mm-node" onClick={() => onPick(s)}>
             <rect x={p.x - p.w / 2} y={p.y - 16} width={p.w} height={32} rx={16}
               fill={s.read ? "var(--accent-soft)" : "var(--card-bg)"}
-              stroke={s.read ? "var(--accent)" : "var(--border-strong)"} strokeWidth="1.5" />
-            <text x={p.x} y={p.y + 4.5} textAnchor="middle" fontSize="12.5" fontWeight="600"
+              stroke={s.read ? "var(--accent)" : "var(--border-strong)"} strokeWidth="1" />
+            <text x={p.x} y={p.y + 4.5} textAnchor="middle" fontSize="12" fontWeight="500"
               fill={s.read ? "var(--accent)" : "var(--text)"}>{p.label}</text>
           </g>
         );
@@ -88,7 +88,7 @@ function Cut({ md, label }) {
   if (!md) return null;
   return (
     <details className="cut">
-      <summary>{label}</summary>
+      <summary><Icon name="chevron-right" />{label}</summary>
       <div className="md"><Markdown>{md}</Markdown></div>
     </details>
   );
@@ -118,7 +118,7 @@ function NoteBox({ problem, num }) {
         value={text}
         onChange={(e) => { setText(e.target.value); if (state === "error") setState("idle"); }}
         onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === "Enter" && save()}
-        placeholder="Ваше решение — попробуйте сами, прежде чем открыть разбор"
+        placeholder="Ваше решение"
         aria-label={`Ваше решение задачи ${num}`}
         maxLength={20000}
       />
@@ -127,7 +127,7 @@ function NoteBox({ problem, num }) {
           {state === "saving" ? "Сохраняю…" : "Зафиксировать"}
         </button>
         {state === "error" && <span className="note-status bad">Не сохранилось, попробуйте ещё раз</span>}
-        {state === "idle" && !dirty && saved && <span className="note-status ok">✓ Зафиксировано</span>}
+        {state === "idle" && !dirty && saved && <span className="note-status ok"><Icon name="check" size={14} />Зафиксировано</span>}
         {state === "idle" && dirty && saved && <span className="note-status">есть несохранённые правки</span>}
       </div>
     </div>
@@ -189,7 +189,7 @@ function Flashcards({ entries }) {
   if (!card) {
     return (
       <div className="card flash-card">
-        <div className="flash-term">Готово!</div>
+        <div className="flash-term">Колода пройдена</div>
         <div className="flash-hint">Выражений: {entries.length} · повторов понадобилось: {repeats}</div>
         <button className="check-btn" ref={revealRef} onClick={restart}>Ещё раз</button>
       </div>
@@ -214,10 +214,15 @@ function Flashcards({ entries }) {
       </div>
       {revealed && (
         <div className="flash-actions">
-          <button className="done-btn" onClick={() => answer(false)}>← Повторить</button>
-          <button className="done-btn done" ref={knowRef} onClick={() => answer(true)}>Знаю →</button>
+          <button className="done-btn" onClick={() => answer(false)}><Icon name="arrow-left" />Повторить</button>
+          <button className="done-btn done" ref={knowRef} onClick={() => answer(true)}>Знаю<Icon name="arrow-right" /></button>
         </div>
       )}
+      <div className="flash-keys" aria-hidden="true">
+        <span><kbd>Пробел</kbd> {revealed ? "знаю" : "показать"}</span>
+        <span><kbd>←</kbd> повторить</span>
+        <span><kbd>→</kbd> знаю</span>
+      </div>
     </div>
   );
 }
@@ -282,7 +287,7 @@ function Glossary({ taskId, entries, onChange }) {
         <input className="field" value={term} onChange={(e) => { setTerm(e.target.value); setError(null); }}
           placeholder="Выражение" aria-label="Выражение" maxLength={200} />
         <textarea className="field" value={definition} onChange={(e) => setDefinition(e.target.value)}
-          onKeyDown={submitOnCmdEnter} placeholder="Значение — можно markdown и формулы"
+          onKeyDown={submitOnCmdEnter} placeholder="Значение (markdown, формулы)"
           aria-label="Значение" maxLength={5000} />
         <div className="note-bar">
           <button className="check-btn" disabled={!term.trim()}>Добавить</button>
@@ -333,7 +338,7 @@ function ChapterBody({ s, onRead }) {
     <>
       <div className="md"><Markdown>{s.content_md}</Markdown></div>
       <button className="check-btn read-btn" onClick={() => onRead(s)}>
-        {s.read ? "✓ Прочитано" : "Прочитал"}
+        {s.read ? <><Icon name="check" />Прочитано</> : "Прочитал"}
       </button>
     </>
   );
@@ -360,7 +365,11 @@ function AnswerRow({ problem, answers, setAnswers, onSolved }) {
         onKeyDown={(e) => e.key === "Enter" && check()}
       />
       <button className="check-btn" onClick={check}>Ок</button>
-      {a.result != null && <span className={"verdict " + (a.result ? "ok" : "bad")}>{a.result ? "✓" : "✕"}</span>}
+      {a.result != null && (
+        <span className={"verdict " + (a.result ? "ok" : "bad")}>
+          <Icon name={a.result ? "check" : "x"} size={18} label={a.result ? "Верно" : "Неверно"} />
+        </span>
+      )}
     </div>
   );
 }
@@ -465,7 +474,7 @@ export default function TaskPage() {
         <div className="tabs">
           {TABS.map(([key, label]) => (
             <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}>
-              {task.progress[key] && <span className="t">✓</span>}{label}
+              {task.progress[key] && <span className="t"><Icon name="check" size={14} label="Пройдено" /></span>}{label}
             </button>
           ))}
         </div>
@@ -476,10 +485,10 @@ export default function TaskPage() {
         {/* все три вкладки остаются на странице, неактивные скрыты: так при переключении
             не теряются черновики решений, ответы тренировки и раскрытые каты */}
         <div className="pane" hidden={tab !== "theory"}>
-            {task.sections.length === 0 && <p className="empty">Теория пока не добавлена.</p>}
+            {task.sections.length === 0 && <p className="empty">Теория пока не добавлена</p>}
             {task.sections.length > 1 && (
               <>
-                <span className="drill-score">Главы теории · прочитано {readCount} из {task.sections.length} · нажми на блок, чтобы открыть</span>
+                <span className="drill-score">Прочитано глав: {readCount} из {task.sections.length} · нажмите на блок карты, чтобы открыть главу</span>
                 <div className="card mindmap-card">
                   <MindMap title={task.title} sections={task.sections} onPick={(s) => setModal(s.id)} />
                 </div>
@@ -490,9 +499,11 @@ export default function TaskPage() {
               return (
                 <div className="card chapter" key={s.id}>
                   <button className="chapter-head" onClick={() => toggleSection(s.id)}>
-                    <span className={"read-dot" + (s.read ? " on" : "")}>{s.read ? "✓" : i + 1}</span>
+                    <span className={"read-dot" + (s.read ? " on" : "")}>
+                      {s.read ? <Icon name="check" size={14} label="Прочитано" /> : i + 1}
+                    </span>
                     <span className="chapter-title">{s.title}</span>
-                    <span className={"chevron" + (open ? " up" : "")}>▾</span>
+                    <span className={"chevron" + (open ? " up" : "")}><Icon name="chevron-down" /></span>
                   </button>
                   {open && (
                     <div className="chapter-body"><ChapterBody s={s} onRead={toggleRead} /></div>
@@ -508,7 +519,7 @@ export default function TaskPage() {
           </div>
 
           <div className="pane wide" hidden={tab !== "problems"}>
-            {task.examples.length === 0 && <p className="empty">Пока пусто.</p>}
+            {task.examples.length === 0 && <p className="empty">Пока пусто</p>}
             {task.examples.map((p, i) => (
               <div className="problem-row" key={p.id}>
                 <div className="card">
@@ -516,7 +527,7 @@ export default function TaskPage() {
                   <div className="prob-q md"><Markdown>{p.statement_md}</Markdown></div>
                   {p.explanation_md
                     ? <Cut md={p.explanation_md} label="Показать решение" />
-                    : <p className="empty">Разбор решения пока не добавлен.</p>}
+                    : <p className="empty">Разбор решения пока не добавлен</p>}
                 </div>
                 <NoteBox problem={p} num={i + 1} />
               </div>
@@ -526,7 +537,7 @@ export default function TaskPage() {
 
           <div className="pane" hidden={tab !== "practice"}>
             <span className="drill-score">Быстрая тренировка · решено {solvedCount} из {required.length}</span>
-            {drills.length === 0 && <p className="empty">Пока пусто.</p>}
+            {drills.length === 0 && <p className="empty">Пока пусто</p>}
             {drills.map((p) => (
               <div className="card" key={p.id}>
                 <div className="prob-q md"><Markdown>{p.statement_md}</Markdown></div>
@@ -548,7 +559,7 @@ export default function TaskPage() {
                 <div className="row">
                   <h3 className="modal-title">{s.title}</h3>
                   <span className="spacer" />
-                  <button className="modal-x" onClick={() => setModal(null)}>✕</button>
+                  <button className="modal-x" onClick={() => setModal(null)} aria-label="Закрыть"><Icon name="x" /></button>
                 </div>
                 <ChapterBody s={s} onRead={toggleRead} />
               </div>

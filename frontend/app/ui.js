@@ -14,12 +14,40 @@ export function MD({ children }) {
   );
 }
 
+// один набор линейных иконок (контуры lucide), один размер и толщина линии — вместо символов ✓ ← ▾ ☀
+const ICONS = {
+  check: <path d="M20 6 9 17l-5-5" />,
+  x: <><path d="M18 6 6 18" /><path d="m6 6 12 12" /></>,
+  "chevron-left": <path d="m15 18-6-6 6-6" />,
+  "chevron-right": <path d="m9 18 6-6-6-6" />,
+  "chevron-down": <path d="m6 9 6 6 6-6" />,
+  "arrow-left": <><path d="m12 19-7-7 7-7" /><path d="M19 12H5" /></>,
+  "arrow-right": <><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></>,
+  "arrow-up": <><path d="m5 12 7-7 7 7" /><path d="M12 19V5" /></>,
+  "arrow-down": <><path d="M12 5v14" /><path d="m19 12-7 7-7-7" /></>,
+  plus: <><path d="M5 12h14" /><path d="M12 5v14" /></>,
+  sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" />
+    <path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" />
+    <path d="m19.07 4.93-1.41 1.41" /></>,
+  moon: <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />,
+};
+
+export function Icon({ name, size = 16, label }) {
+  return (
+    <svg className="icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+      aria-hidden={label ? undefined : true} aria-label={label} role={label ? "img" : undefined}>
+      {ICONS[name]}
+    </svg>
+  );
+}
+
 // progress = {theory, problems, practice} — три булевых флага
 export const doneCount = (p) => Object.values(p).filter(Boolean).length;
 
 export function Ring({ progress, hole }) {
   const n = doneCount(progress);
-  if (n === 3) return <span className="tick">✓</span>;
+  if (n === 3) return <span className="tick"><Icon name="check" size={18} label="Пройдено" /></span>;
   const deg = (n / 3) * 360;
   return (
     <span className="ring" style={{
@@ -39,8 +67,10 @@ export function ThemeToggle() {
   };
   return (
     <div className="theme-toggle">
-      <button className={theme === "light" ? "on" : ""} onClick={() => setTheme("light")} title="Светлая тема">☀</button>
-      <button className={theme === "dark" ? "on" : ""} onClick={() => setTheme("dark")} title="Тёмная тема">☾</button>
+      <button className={theme === "light" ? "on" : ""} onClick={() => setTheme("light")} title="Светлая тема"
+        aria-label="Светлая тема" aria-pressed={theme === "light"}><Icon name="sun" /></button>
+      <button className={theme === "dark" ? "on" : ""} onClick={() => setTheme("dark")} title="Тёмная тема"
+        aria-label="Тёмная тема" aria-pressed={theme === "dark"}><Icon name="moon" /></button>
     </div>
   );
 }
@@ -97,7 +127,7 @@ export function Shell({ project, activeId, kicker, title, children }) {
         <button className="sidebar-toggle" onClick={toggleSidebar} aria-expanded={!collapsed}
           title={collapsed ? "Развернуть меню" : "Свернуть меню"}
           aria-label={collapsed ? "Развернуть меню" : "Свернуть меню"}>
-          <span className="chev">‹</span>
+          <Icon name="chevron-left" />
         </button>
       </aside>
       <div className="main">

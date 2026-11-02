@@ -31,7 +31,7 @@ export default function Projects() {
               <Link key={p.id} href={`/projects/${p.id}`} className="stat-card project-card">
                 <div className="project-title">{p.title}</div>
                 <div className="stat-row">
-                  <span className="stat-big accent">{percent}%</span>
+                  <span className="stat-big">{percent}%</span>
                   <span className="stat-sub">заданий: {p.tasks}</span>
                 </div>
                 <div className="bar"><div style={{ width: percent + "%" }} /></div>

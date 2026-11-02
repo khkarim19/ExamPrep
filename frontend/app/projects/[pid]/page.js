@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { Shell, Ring, doneCount, percentOf } from "../../ui";
+import { Shell, Ring, Icon, doneCount, percentOf } from "../../ui";
 
 // главная проекта: статистика и все задания
 export default function ProjectHome() {
@@ -16,7 +16,12 @@ export default function ProjectHome() {
   }, [pid]);
 
   if (missing) {
-    return <main className="admin-page"><p>Проект не найден. <Link href="/">← ко всем проектам</Link></p></main>;
+    return (
+      <main className="admin-page">
+        <p>Проект не найден</p>
+        <Link className="back-link" href="/"><Icon name="arrow-left" />Ко всем проектам</Link>
+      </main>
+    );
   }
 
   const tasks = project?.tasks || [];

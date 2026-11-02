@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { adminFetch, move } from "../../api";
+import { Icon } from "../../../ui";
 
 // задания одного проекта: создание, переименование, порядок, удаление
 export default function AdminProjectTasks() {
@@ -42,14 +43,15 @@ export default function AdminProjectTasks() {
     <main className="admin-page">
       <h1>{project.title} — задания</h1>
       <p>
-        <Link href="/admin">← к проектам</Link> · <Link href={`/projects/${pid}`}>открыть на сайте</Link>
+        <Link className="back-link" href="/admin"><Icon name="arrow-left" />К проектам</Link>
+        <Link className="back-link" href={`/projects/${pid}`}>Открыть на сайте</Link>
       </p>
-      {tasks.length === 0 && <p className="empty">Заданий пока нет.</p>}
+      {tasks.length === 0 && <p className="empty">Заданий пока нет</p>}
       <ul className="admin-list">
         {tasks.map((t, i) => (
           <li key={t.id}>
-            <button onClick={() => move(tasks, i, -1, "/api/admin/tasks/reorder").then(setTasks)}>↑</button>
-            <button onClick={() => move(tasks, i, 1, "/api/admin/tasks/reorder").then(setTasks)}>↓</button>
+            <button onClick={() => move(tasks, i, -1, "/api/admin/tasks/reorder").then(setTasks)}><Icon name="arrow-up" label="Выше" /></button>
+            <button onClick={() => move(tasks, i, 1, "/api/admin/tasks/reorder").then(setTasks)}><Icon name="arrow-down" label="Ниже" /></button>
             <Link href={`/admin/tasks/${t.id}`}>{i + 1}. {t.title}</Link>
             <span className="spacer" />
             <button onClick={() => rename(t)}>переименовать</button>
@@ -57,7 +59,7 @@ export default function AdminProjectTasks() {
           </li>
         ))}
       </ul>
-      <button className="done-btn" onClick={addTask}>+ Добавить задание</button>
+      <button className="done-btn" onClick={addTask}><Icon name="plus" />Добавить задание</button>
     </main>
   );
 }

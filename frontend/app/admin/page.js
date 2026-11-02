@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { adminFetch, move } from "./api";
+import { Icon } from "../ui";
 
 // реестр проектов: создание, переименование, порядок, удаление
 export default function AdminProjects() {
@@ -33,13 +34,13 @@ export default function AdminProjects() {
   return (
     <main className="admin-page">
       <h1>Админка — проекты</h1>
-      <p><Link href="/">← на сайт</Link></p>
-      {projects.length === 0 && <p className="empty">Проектов пока нет.</p>}
+      <Link className="back-link" href="/"><Icon name="arrow-left" />На сайт</Link>
+      {projects.length === 0 && <p className="empty">Проектов пока нет</p>}
       <ul className="admin-list">
         {projects.map((p, i) => (
           <li key={p.id}>
-            <button onClick={() => move(projects, i, -1, "/api/admin/projects/reorder").then(setProjects)}>↑</button>
-            <button onClick={() => move(projects, i, 1, "/api/admin/projects/reorder").then(setProjects)}>↓</button>
+            <button onClick={() => move(projects, i, -1, "/api/admin/projects/reorder").then(setProjects)}><Icon name="arrow-up" label="Выше" /></button>
+            <button onClick={() => move(projects, i, 1, "/api/admin/projects/reorder").then(setProjects)}><Icon name="arrow-down" label="Ниже" /></button>
             <Link href={`/admin/projects/${p.id}`}>{p.title}</Link>
             <span className="empty">заданий: {p.tasks}</span>
             <span className="spacer" />
@@ -48,7 +49,7 @@ export default function AdminProjects() {
           </li>
         ))}
       </ul>
-      <button className="done-btn" onClick={addProject}>+ Добавить проект</button>
+      <button className="done-btn" onClick={addProject}><Icon name="plus" />Добавить проект</button>
     </main>
   );
 }

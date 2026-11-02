@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { MD as Markdown } from "../../../ui";
+import { Icon, MD as Markdown } from "../../../ui";
 import { adminFetch, move } from "../../api";
 
 // id главы и всех её потомков — их нельзя выбирать родителем (цикл)
@@ -51,8 +51,8 @@ function SectionEditor({ s, index, list, setList, reload }) {
             {parentOptions.map((o) => <option key={o.id} value={o.id}>{o.title}</option>)}
           </select>
         </label>
-        <button onClick={() => move(list, index, -1, "/api/admin/theory/reorder").then(setList)}>↑</button>
-        <button onClick={() => move(list, index, 1, "/api/admin/theory/reorder").then(setList)}>↓</button>
+        <button onClick={() => move(list, index, -1, "/api/admin/theory/reorder").then(setList)}><Icon name="arrow-up" label="Выше" /></button>
+        <button onClick={() => move(list, index, 1, "/api/admin/theory/reorder").then(setList)}><Icon name="arrow-down" label="Ниже" /></button>
         <button onClick={remove}>удалить</button>
       </div>
       <div className="theory-edit">
@@ -96,8 +96,8 @@ function ProblemEditor({ p, index, list, setList, reload }) {
       <div className="row">
         <h3>Задача {index + 1}</h3>
         <span className="spacer" />
-        <button onClick={() => move(list, index, -1, "/api/admin/problems/reorder").then(setList)}>↑</button>
-        <button onClick={() => move(list, index, 1, "/api/admin/problems/reorder").then(setList)}>↓</button>
+        <button onClick={() => move(list, index, -1, "/api/admin/problems/reorder").then(setList)}><Icon name="arrow-up" label="Выше" /></button>
+        <button onClick={() => move(list, index, 1, "/api/admin/problems/reorder").then(setList)}><Icon name="arrow-down" label="Ниже" /></button>
         <button onClick={remove}>удалить</button>
       </div>
       <textarea value={statement} onChange={(e) => setStatement(e.target.value)} placeholder="Условие (markdown, LaTeX)" />
@@ -151,7 +151,7 @@ export default function AdminTask() {
   return (
     <main className="admin-page">
       <h1>{task.title} — редактирование</h1>
-      <p><Link href={`/admin/projects/${task.project_id}`}>← к заданиям проекта</Link></p>
+      <Link className="back-link" href={`/admin/projects/${task.project_id}`}><Icon name="arrow-left" />К заданиям проекта</Link>
       <p>
         Картинка: <input type="file" accept="image/*" onChange={uploadImage} />
       </p>
@@ -161,7 +161,7 @@ export default function AdminTask() {
         <SectionEditor key={s.id} s={s} index={i} list={task.sections}
           setList={(next) => setTask({ ...task, sections: next })} reload={reload} />
       ))}
-      <button onClick={addSection}>+ добавить главу</button>
+      <button className="add-btn" onClick={addSection}><Icon name="plus" />Добавить главу</button>
 
       {[["example", "Задачи (с разбором решения)"], ["practice", "Тренировка (с проверкой ответа)"]].map(
         ([kind, title]) => {
@@ -174,7 +174,7 @@ export default function AdminTask() {
               {list.map((p, i) => (
                 <ProblemEditor key={p.id} p={p} index={i} list={list} setList={setList} reload={reload} />
               ))}
-              <button onClick={() => addProblem(kind)}>+ добавить</button>
+              <button className="add-btn" onClick={() => addProblem(kind)}><Icon name="plus" />Добавить</button>
             </section>
           );
         }
