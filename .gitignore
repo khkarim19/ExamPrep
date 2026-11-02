@@ -11,3 +11,4 @@ backend/static/uploads/
 .claude/settings.local.json
 # учебные материалы хранятся локально
 backend/content/
+.env

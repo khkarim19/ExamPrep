@@ -2,7 +2,7 @@ services:
   backend:
     build: ./backend
     environment:
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
     volumes:
       - db:/data
       - uploads:/app/static/uploads

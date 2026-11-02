@@ -21,6 +21,12 @@ def test_flow():
     assert c.post("/api/admin/projects", json={}, headers={
         "Authorization": "Basic " + base64.b64encode(b"admin:wrong").decode()}).status_code == 401
 
+    # без заданного пароля админка закрыта для всех, а не открыта «по умолчанию»
+    app.ADMIN_PASSWORD, saved = "", app.ADMIN_PASSWORD
+    assert c.post("/api/admin/projects", json={}, headers={
+        "Authorization": "Basic " + base64.b64encode(b"admin:").decode()}).status_code == 503
+    app.ADMIN_PASSWORD = saved
+
     # CRUD проектов
     pa = c.post("/api/admin/projects", json={"title": "Математика"}, headers=AUTH).json()["id"]
     pb = c.post("/api/admin/projects", json={}, headers=AUTH).json()["id"]

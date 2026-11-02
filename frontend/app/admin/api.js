@@ -16,6 +16,10 @@ export async function adminFetch(url, opts = {}) {
     alert("Неверный пароль");
     throw new Error("unauthorized");
   }
+  if (res.status === 503) {
+    alert("Админка выключена: задайте пароль ADMIN_PASSWORD (см. README)");
+    throw new Error("admin disabled");
+  }
   if (!res.ok) {
     alert("Ошибка: " + res.status);
     throw new Error(String(res.status));

@@ -14,8 +14,8 @@ from pydantic import BaseModel, Field
 ROOT = Path(__file__).parent
 DB_PATH = Path(os.environ.get("EGE_DB", ROOT / "ege.db"))
 UPLOADS = ROOT / "static" / "uploads"
-# ponytail: дефолт для локальной разработки, в проде задать ADMIN_PASSWORD
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin")
+# пароль задаётся только окружением; без него админка закрыта, а не открыта «по умолчанию»
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 
 
 def db():
@@ -56,6 +56,8 @@ security = HTTPBasic()
 
 
 def admin(creds: HTTPBasicCredentials = Depends(security)):
+    if not ADMIN_PASSWORD:
+        raise HTTPException(503, "Админка выключена: задайте ADMIN_PASSWORD")
     if not secrets.compare_digest(creds.password.encode(), ADMIN_PASSWORD.encode()):
         raise HTTPException(401, "Неверный пароль", headers={"WWW-Authenticate": "Basic"})
 
