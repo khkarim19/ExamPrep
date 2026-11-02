@@ -332,6 +332,79 @@ function Glossary({ taskId, entries, onChange }) {
   );
 }
 
+// словарь поверх любой вкладки: быстро найти выражение или добавить новое, не уходя из задачи
+function GlossaryDrawer({ taskId, entries, onChange, onClose }) {
+  const [q, setQ] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [term, setTerm] = useState("");
+  const [definition, setDefinition] = useState("");
+  const [error, setError] = useState(null);
+  const searchRef = useRef(null);
+
+  useEffect(() => {
+    searchRef.current?.focus();
+    const onKey = (e) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  const needle = q.trim().toLowerCase();
+  const shown = [...entries]
+    .filter((g) => !needle || g.term.toLowerCase().includes(needle) || g.definition.toLowerCase().includes(needle))
+    .sort((a, b) => a.term.localeCompare(b.term, "ru", { sensitivity: "base" }));
+
+  async function add(e) {
+    e.preventDefault();
+    try {
+      const created = await jsonFetch(`/api/tasks/${taskId}/glossary`, "POST", { term, definition });
+      onChange([...entries, created]);
+      setTerm(""); setDefinition(""); setError(null); setAdding(false); setQ("");
+    } catch (err) { setError(err.message); }
+  }
+
+  return (
+    <div className="drawer-back" onClick={onClose}>
+      <aside className="drawer" role="dialog" aria-label="Словарь" onClick={(e) => e.stopPropagation()}>
+        <div className="drawer-head">
+          <h2 className="modal-title">Словарь</h2>
+          <span className="drill-score">{entries.length}</span>
+          <span className="spacer" />
+          <button className="modal-x" onClick={onClose} aria-label="Закрыть"><Icon name="x" /></button>
+        </div>
+        <div className="drawer-body">
+          <input ref={searchRef} className="field" value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder="Поиск" aria-label="Поиск по словарю" />
+          {adding ? (
+            <form className="gloss-form" onSubmit={add}>
+              <input className="field" value={term} autoFocus maxLength={200} aria-label="Выражение"
+                placeholder="Выражение" onChange={(e) => { setTerm(e.target.value); setError(null); }} />
+              <textarea className="field" value={definition} maxLength={5000} aria-label="Значение"
+                placeholder="Значение (markdown, формулы)" onChange={(e) => setDefinition(e.target.value)}
+                onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === "Enter" && e.currentTarget.form.requestSubmit()} />
+              <div className="note-bar">
+                <button className="check-btn" disabled={!term.trim()}>Добавить</button>
+                <button type="button" className="link-btn" onClick={() => setAdding(false)}>Отмена</button>
+                {error && <span className="note-status bad">{error}</span>}
+              </div>
+            </form>
+          ) : (
+            <button className="add-btn" onClick={() => { setTerm(shown.length ? "" : q.trim()); setAdding(true); }}>
+              <Icon name="plus" />Добавить выражение
+            </button>
+          )}
+          {shown.length === 0 && <p className="empty">{entries.length ? "Ничего не найдено" : "Словарь пока пуст"}</p>}
+          {shown.map((g) => (
+            <div className="drawer-item" key={g.id}>
+              <div className="gloss-term">{g.term}</div>
+              {g.definition && <div className="md gloss-def"><Markdown>{g.definition}</Markdown></div>}
+            </div>
+          ))}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
 // тело главы: текст + кнопка «Прочитал» (используется и в аккордеоне, и в модалке карты)
 function ChapterBody({ s, onRead }) {
   return (
@@ -389,11 +462,13 @@ export default function TaskPage() {
     return next;
   });
   const [modal, setModal] = useState(null); // id главы, открытой поверх карты
+  const [drawer, setDrawer] = useState(false); // словарь справа
 
   const loadProject = (pid) => fetch(`/api/projects/${pid}`).then((r) => r.json()).then(setProject);
   const loadAll = () => task && loadProject(task.project_id);
   useEffect(() => {
     setTab("theory");
+    setDrawer(false);
     setAnswers({});
     fetch(`/api/tasks/${id}`).then((r) => (r.ok ? r.json() : null)).then((t) => {
       setTask(t);
@@ -469,7 +544,8 @@ export default function TaskPage() {
   );
 
   return (
-    <Shell project={project} activeId={Number(id)} kicker={kicker} title={task.title}>
+    <Shell project={project} activeId={Number(id)} kicker={kicker} title={task.title}
+      actions={<button className="topbar-btn" onClick={() => setDrawer(true)}><Icon name="book" />Словарь</button>}>
       <div className="task-view">
         <div className="tabs">
           {TABS.map(([key, label]) => (
@@ -549,6 +625,11 @@ export default function TaskPage() {
             ))}
             <DoneBtn section="practice" blocked={!task.progress.practice && left > 0} />
           </div>
+
+        {drawer && (
+          <GlossaryDrawer taskId={task.id} entries={task.glossary}
+            onChange={(glossary) => setTask((t) => ({ ...t, glossary }))} onClose={() => setDrawer(false)} />
+        )}
 
         {modal != null && (() => {
           const s = task.sections.find((x) => x.id === modal);

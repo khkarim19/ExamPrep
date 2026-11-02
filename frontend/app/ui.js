@@ -30,6 +30,7 @@ const ICONS = {
     <path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" />
     <path d="m19.07 4.93-1.41 1.41" /></>,
   moon: <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />,
+  book: <><path d="M12 7v14" /><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z" /></>,
 };
 
 export function Icon({ name, size = 16, label }) {
@@ -92,7 +93,7 @@ function useSidebar() {
 }
 
 // project = {id, title, tasks[]} из /api/projects/{id}; пока грузится — null
-export function Shell({ project, activeId, kicker, title, children }) {
+export function Shell({ project, activeId, kicker, title, actions, children }) {
   const tasks = project?.tasks || [];
   const percent = percentOf(tasks.reduce((n, t) => n + doneCount(t.progress), 0), tasks.length * 3);
   const [collapsed, toggleSidebar] = useSidebar();
@@ -136,7 +137,7 @@ export function Shell({ project, activeId, kicker, title, children }) {
             <div className="kicker">{kicker}</div>
             <div className="topbar-title">{title}</div>
           </div>
-          <ThemeToggle />
+          <div className="topbar-actions">{actions}<ThemeToggle /></div>
         </header>
         <div className="scroll">{children}</div>
       </div>
