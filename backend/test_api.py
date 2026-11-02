@@ -134,36 +134,62 @@ def test_flow():
     assert c.put("/api/problems/999/note", json={"text": "x"}).status_code == 404
     assert c.put(f"/api/problems/{p1}/note", json={"text": "x" * 20001}).status_code == 422
 
-    # словарь: CRUD, уникальность выражения без учёта регистра (и для кириллицы), валидация
-    G = f"/api/tasks/{tid}/glossary"
-    assert c.get(f"/api/tasks/{tid}").json()["glossary"] == []
+    # словарь проекта: CRUD, уникальность выражения без учёта регистра (и для кириллицы), валидация
+    G = f"/api/projects/{pa}/glossary"
+    assert c.get(G).json() == [] and "glossary" not in c.get(f"/api/tasks/{tid}").json()
     r = c.post(G, json={"term": "  Брокер ", "definition": "сервер очереди"})
     assert r.status_code == 201 and r.json()["term"] == "Брокер"
     g1 = r.json()["id"]
     g2 = c.post(G, json={"term": "Offset"}).json()["id"]
     assert c.post(G, json={"term": "брокер"}).status_code == 409          # тот же термин в другом регистре
+    assert c.post(f"/api/projects/{pb}/glossary", json={"term": "брокер"}).status_code == 201  # в другом проекте можно
     assert c.post(G, json={"term": "   "}).status_code == 422
     assert c.post(G, json={"term": "x" * 201}).status_code == 422
-    assert c.post("/api/tasks/999/glossary", json={"term": "x"}).status_code == 404
+    assert c.post("/api/projects/999/glossary", json={"term": "x"}).status_code == 404
+    assert c.get("/api/projects/999/glossary").status_code == 404
     assert c.put(f"/api/glossary/{g2}", json={"definition": "номер сообщения в партиции"}).json() == \
         {"id": g2, "term": "Offset", "definition": "номер сообщения в партиции"}
     assert c.put(f"/api/glossary/{g2}", json={"term": "БРОКЕР"}).status_code == 409   # занято другой записью
     assert c.put(f"/api/glossary/{g1}", json={"term": "брокер"}).status_code == 200   # своя же запись — можно
     assert c.put("/api/glossary/999", json={"term": "x"}).status_code == 404
     assert c.delete(f"/api/glossary/{g2}").status_code == 200
-    assert [(g["term"], g["definition"]) for g in c.get(f"/api/tasks/{tid}").json()["glossary"]] == \
-        [("брокер", "сервер очереди")]
+    assert [(g["term"], g["definition"]) for g in c.get(G).json()] == [("брокер", "сервер очереди")]
 
     # удаление задания каскадом чистит проблемы и прогресс
     assert c.delete(f"/api/admin/tasks/{tid}", headers=AUTH).status_code == 200
     assert c.get(f"/api/tasks/{tid}").status_code == 404
-    assert app.q("SELECT COUNT(*) FROM glossary WHERE task_id = ?", (tid,))[0][0] == 0  # словарь ушёл вместе с заданием
+    assert len(c.get(G).json()) == 1  # словарь принадлежит проекту и переживает удаление задания
 
     # удаление проекта каскадом удаляет его задания (и всё под ними), соседний проект не трогает
     assert c.delete(f"/api/admin/projects/{pa}", headers=AUTH).status_code == 200
     assert c.get(f"/api/tasks/{t1}").status_code == 404
     assert c.get(f"/api/tasks/{tb}").status_code == 200
     assert [p["id"] for p in c.get("/api/projects").json()] == [pb]
+
+
+def test_glossary_moves_to_project():
+    """Старая БД со словарём по заданиям: записи переезжают в проект, одинаковые выражения сливаются."""
+    import sqlite3, subprocess, sys
+    path = os.path.join(tempfile.mkdtemp(), "old.db")
+    con = sqlite3.connect(path)
+    con.executescript("""
+        CREATE TABLE projects (id INTEGER PRIMARY KEY, title TEXT NOT NULL, sort_order INTEGER NOT NULL);
+        CREATE TABLE tasks (id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL REFERENCES projects(id)
+            ON DELETE CASCADE, title TEXT NOT NULL, sort_order INTEGER NOT NULL);
+        CREATE TABLE glossary (id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES tasks(id)
+            ON DELETE CASCADE, term TEXT NOT NULL, definition TEXT NOT NULL DEFAULT '');
+        INSERT INTO projects VALUES (1, 'П', 1), (2, 'Р', 2);
+        INSERT INTO tasks VALUES (1, 1, 'Т1', 1), (2, 1, 'Т2', 2), (3, 2, 'Т3', 1);
+        INSERT INTO glossary (task_id, term, definition) VALUES
+            (1, 'Брокер', 'сервер'), (2, 'брокер', 'посредник'), (2, 'Топик', 'канал'), (3, 'Брокер', 'другой проект');
+    """)
+    con.commit()
+    con.close()
+    code = ("import app; rows = [tuple(r) for r in app.q('SELECT project_id, term, definition FROM glossary ORDER BY id')]; "
+            "assert rows == [(1, 'Брокер', 'сервер\\n\\nпосредник'), (1, 'Топик', 'канал'), (2, 'Брокер', 'другой проект')], rows")
+    for _ in range(2):  # второй старт: миграция не повторяется
+        subprocess.run([sys.executable, "-c", code], env={**os.environ, "EGE_DB": path},
+                       check=True, cwd=os.path.dirname(__file__) or ".")
 
 
 def test_migration_adds_user_note():
@@ -196,4 +222,5 @@ def test_migration_adds_user_note():
 if __name__ == "__main__":
     test_flow()
     test_migration_adds_user_note()
+    test_glossary_moves_to_project()
     print("ok")

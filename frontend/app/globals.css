@@ -267,7 +267,7 @@ textarea.field { min-height: 88px; resize: vertical; }
 @keyframes slideIn { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 .drawer-back { position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, .4); }
 .drawer {
-  position: absolute; top: 0; right: 0; bottom: 0; width: min(420px, 100%);
+  position: absolute; top: 0; right: 0; bottom: 0; width: min(480px, 100%);
   display: flex; flex-direction: column; background: var(--panel-bg);
   border-left: 1px solid var(--border); animation: slideIn .2s var(--ease);
 }

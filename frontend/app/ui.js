@@ -4,6 +4,7 @@ import Link from "next/link";
 import Markdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
+import { GlossaryDrawer } from "./glossary";
 
 // единый рендер markdown с LaTeX-формулами: $...$ инлайн, $$...$$ блоком
 export function MD({ children }) {
@@ -93,10 +94,11 @@ function useSidebar() {
 }
 
 // project = {id, title, tasks[]} из /api/projects/{id}; пока грузится — null
-export function Shell({ project, activeId, kicker, title, actions, children }) {
+export function Shell({ project, activeId, kicker, title, children }) {
   const tasks = project?.tasks || [];
   const percent = percentOf(tasks.reduce((n, t) => n + doneCount(t.progress), 0), tasks.length * 3);
   const [collapsed, toggleSidebar] = useSidebar();
+  const [glossaryOpen, setGlossaryOpen] = useState(false);
 
   return (
     <div className="app">
@@ -137,9 +139,15 @@ export function Shell({ project, activeId, kicker, title, actions, children }) {
             <div className="kicker">{kicker}</div>
             <div className="topbar-title">{title}</div>
           </div>
-          <div className="topbar-actions">{actions}<ThemeToggle /></div>
+          <div className="topbar-actions">
+            {project && (
+              <button className="topbar-btn" onClick={() => setGlossaryOpen(true)}><Icon name="book" />Словарь</button>
+            )}
+            <ThemeToggle />
+          </div>
         </header>
         <div className="scroll">{children}</div>
+        {glossaryOpen && project && <GlossaryDrawer projectId={project.id} onClose={() => setGlossaryOpen(false)} />}
       </div>
     </div>
   );

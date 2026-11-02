@@ -38,8 +38,24 @@ def w(sql, args=(), many=False):
 
 
 def init_db():
+    # ponytail: словарь переехал с заданий на проект; записи одного выражения из разных заданий сливаются.
+    # Удалить миграцию, когда локальная БД и docker-том хотя бы раз стартовали с этим кодом.
+    old = None
+    if "task_id" in [r["name"] for r in q("PRAGMA table_info(glossary)")]:
+        old = q("SELECT t.project_id, g.term, g.definition FROM glossary g JOIN tasks t ON t.id = g.task_id ORDER BY g.id")
+        w("DROP TABLE glossary")
     with closing(db()) as c:
         c.executescript((ROOT / "schema.sql").read_text())
+    if old:
+        merged = {}
+        for r in old:
+            key = (r["project_id"], r["term"].casefold())
+            if key not in merged:
+                merged[key] = [r["term"], r["definition"]]
+            elif r["definition"] and r["definition"] not in merged[key][1]:
+                merged[key][1] = (merged[key][1] + "\n\n" + r["definition"]).strip()
+        w("INSERT INTO glossary (project_id, term, definition) VALUES (?, ?, ?)",
+          [(pid, v[0], v[1]) for (pid, _), v in merged.items()], many=True)
     # ponytail: миграция БД, созданных до поля user_note.
     # Удалить, когда локальная БД и docker-том хотя бы раз стартовали с этим кодом.
     if "user_note" not in [r["name"] for r in q("PRAGMA table_info(problems)")]:
@@ -123,9 +139,7 @@ def get_task(task_id: int):
             "sections": [dict(s) for s in q(
                 "SELECT * FROM theory_sections WHERE task_id = ? ORDER BY sort_order", (task_id,))],
             "examples": [p for p in probs if p["kind"] == "example"],
-            "practice": [p for p in probs if p["kind"] == "practice"],
-            "glossary": [dict(g) for g in q(
-                "SELECT id, term, definition FROM glossary WHERE task_id = ? ORDER BY id", (task_id,))]}
+            "practice": [p for p in probs if p["kind"] == "practice"]}
 
 
 class ProgressIn(BaseModel):
@@ -176,7 +190,7 @@ def set_problem_solved(problem_id: int, r: DoneIn):
     return {"ok": True}
 
 
-# ---------- словарь задания (CRUD на сайте, как и записи решений) ----------
+# ---------- словарь проекта (CRUD на сайте, как и записи решений) ----------
 
 class GlossaryIn(BaseModel):
     term: str = Field(min_length=1, max_length=200)
@@ -188,35 +202,42 @@ class GlossaryPatch(BaseModel):
     definition: str | None = Field(default=None, max_length=5000)
 
 
-def glossary_term(task_id, term, exclude_id=None):
-    """Выражение без пробелов по краям; одно и то же выражение в задании — один раз (без учёта регистра)."""
+def glossary_term(project_id, term, exclude_id=None):
+    """Выражение без пробелов по краям; одно и то же выражение в проекте — один раз (без учёта регистра)."""
     term = term.strip()
     if not term:
         raise HTTPException(422, "Выражение не может быть пустым")
-    # ponytail: сравнение в Python — SQLite-овский NOCASE не понимает кириллицу; терминов в задании мало
+    # ponytail: сравнение в Python — SQLite-овский NOCASE не понимает кириллицу; терминов в проекте немного
     if any(r["id"] != exclude_id and r["term"].casefold() == term.casefold()
-           for r in q("SELECT id, term FROM glossary WHERE task_id = ?", (task_id,))):
+           for r in q("SELECT id, term FROM glossary WHERE project_id = ?", (project_id,))):
         raise HTTPException(409, "Такое выражение уже есть в словаре")
     return term
 
 
-@app.post("/api/tasks/{task_id}/glossary", status_code=201)
-def create_glossary_entry(task_id: int, g: GlossaryIn):
-    term = glossary_term(task_id, g.term)
+@app.get("/api/projects/{project_id}/glossary")
+def list_glossary(project_id: int):
+    if not q("SELECT 1 FROM projects WHERE id = ?", (project_id,)):
+        raise HTTPException(404)
+    return [dict(g) for g in q("SELECT id, term, definition FROM glossary WHERE project_id = ? ORDER BY id", (project_id,))]
+
+
+@app.post("/api/projects/{project_id}/glossary", status_code=201)
+def create_glossary_entry(project_id: int, g: GlossaryIn):
+    term = glossary_term(project_id, g.term)
     try:
-        cur = w("INSERT INTO glossary (task_id, term, definition) VALUES (?, ?, ?)",
-                (task_id, term, g.definition.strip()))
+        cur = w("INSERT INTO glossary (project_id, term, definition) VALUES (?, ?, ?)",
+                (project_id, term, g.definition.strip()))
     except sqlite3.IntegrityError:
-        raise HTTPException(404, "Нет такого задания")
+        raise HTTPException(404, "Нет такого проекта")
     return {"id": cur.lastrowid, "term": term, "definition": g.definition.strip()}
 
 
 @app.put("/api/glossary/{entry_id}")
 def update_glossary_entry(entry_id: int, g: GlossaryPatch):
-    rows = q("SELECT task_id FROM glossary WHERE id = ?", (entry_id,))
+    rows = q("SELECT project_id FROM glossary WHERE id = ?", (entry_id,))
     if not rows:
         raise HTTPException(404)
-    term = None if g.term is None else glossary_term(rows[0]["task_id"], g.term, exclude_id=entry_id)
+    term = None if g.term is None else glossary_term(rows[0]["project_id"], g.term, exclude_id=entry_id)
     definition = None if g.definition is None else g.definition.strip()
     w("UPDATE glossary SET term = COALESCE(?, term), definition = COALESCE(?, definition) WHERE id = ?",
       (term, definition, entry_id))
