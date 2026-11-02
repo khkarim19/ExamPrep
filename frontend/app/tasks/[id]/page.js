@@ -279,8 +279,9 @@ export default function TaskPage() {
         <h1 className="task-h">Задание {num || ""}</h1>
         <div className="task-sub">{task.title}</div>
 
-        {tab === "theory" && (
-          <div className="pane">
+        {/* все три вкладки остаются на странице, неактивные скрыты: так при переключении
+            не теряются черновики решений, ответы тренировки и раскрытые каты */}
+        <div className="pane" hidden={tab !== "theory"}>
             {task.sections.length === 0 && <p className="empty">Теория пока не добавлена.</p>}
             {task.sections.length > 1 && (
               <>
@@ -306,10 +307,8 @@ export default function TaskPage() {
               );
             })}
           </div>
-        )}
 
-        {tab === "problems" && (
-          <div className="pane wide">
+          <div className="pane wide" hidden={tab !== "problems"}>
             {task.examples.length === 0 && <p className="empty">Пока пусто.</p>}
             {task.examples.map((p, i) => (
               <div className="problem-row" key={p.id}>
@@ -325,10 +324,8 @@ export default function TaskPage() {
             ))}
             <DoneBtn section="problems" />
           </div>
-        )}
 
-        {tab === "practice" && (
-          <div className="pane">
+          <div className="pane" hidden={tab !== "practice"}>
             <span className="drill-score">Быстрая тренировка · решено {solvedCount} из {required.length}</span>
             {drills.length === 0 && <p className="empty">Пока пусто.</p>}
             {drills.map((p) => (
@@ -342,7 +339,6 @@ export default function TaskPage() {
             ))}
             <DoneBtn section="practice" blocked={!task.progress.practice && left > 0} />
           </div>
-        )}
 
         {modal != null && (() => {
           const s = task.sections.find((x) => x.id === modal);
