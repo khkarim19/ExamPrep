@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Icon, MD as Markdown } from "../../../ui";
-import { adminFetch, move } from "../../api";
+import { adminFetch, move, imageProps } from "../../api";
 
 // id главы и всех её потомков — их нельзя выбирать родителем (цикл)
 function withDescendants(id, all) {
@@ -56,7 +56,7 @@ function SectionEditor({ s, index, list, setList, reload }) {
         <button onClick={remove}>удалить</button>
       </div>
       <div className="theory-edit">
-        <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Текст главы (markdown)" />
+        <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Текст главы (markdown)" {...imageProps(setContent)} />
         <div className="md preview"><Markdown>{content}</Markdown></div>
       </div>
       {dirty && <button className="done-btn" onClick={save}>Сохранить главу</button>}
@@ -100,12 +100,12 @@ function ProblemEditor({ p, index, list, setList, reload }) {
         <button onClick={() => move(list, index, 1, "/api/admin/problems/reorder").then(setList)}><Icon name="arrow-down" label="Ниже" /></button>
         <button onClick={remove}>удалить</button>
       </div>
-      <textarea value={statement} onChange={(e) => setStatement(e.target.value)} placeholder="Условие (markdown, LaTeX)" />
+      <textarea value={statement} onChange={(e) => setStatement(e.target.value)} placeholder="Условие (markdown, LaTeX)" {...imageProps(setStatement)} />
       {isPractice && (
         <textarea value={solution} onChange={(e) => setSolution(e.target.value)}
           placeholder="Правильный ответ (для проверки)" style={{ minHeight: 44 }} />
       )}
-      <textarea value={explanation} onChange={(e) => setExplanation(e.target.value)}
+      <textarea value={explanation} onChange={(e) => setExplanation(e.target.value)} {...imageProps(setExplanation)}
         placeholder={isPractice ? "Объяснение решения (необязательно, будет под катом)" : "Объяснение решения (будет под катом)"} />
       {dirty && <button className="done-btn" onClick={save}>Сохранить</button>}
     </div>
@@ -138,23 +138,11 @@ export default function AdminTask() {
     reload();
   }
 
-  async function uploadImage(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    const form = new FormData();
-    form.append("file", file);
-    const { url } = await adminFetch("/api/admin/upload", { method: "POST", body: form });
-    prompt("Вставь это в markdown:", `![](${url})`);
-    e.target.value = "";
-  }
-
   return (
     <main className="admin-page">
       <h1>{task.title} — редактирование</h1>
       <Link className="back-link" href={`/admin/projects/${task.project_id}`}><Icon name="arrow-left" />К заданиям проекта</Link>
-      <p>
-        Картинка: <input type="file" accept="image/*" onChange={uploadImage} />
-      </p>
+      <p className="empty">Картинку можно вставить из буфера (⌘V / Ctrl+V) или перетащить файлом прямо в текст: ссылка подставится на месте курсора.</p>
 
       <h2>Теория — главы</h2>
       {task.sections.map((s, i) => (

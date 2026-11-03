@@ -433,6 +433,8 @@ def delete_problem(problem_id: int):
 
 @app.post("/api/admin/upload", dependencies=[Depends(admin)])
 async def upload(file: UploadFile):
+    if not (file.content_type or "").startswith("image/"):
+        raise HTTPException(415, "только картинки")
     ext = Path(file.filename or "").suffix[:10]  # suffix не содержит слэшей — имя безопасно
     name = uuid.uuid4().hex + ext
     (UPLOADS / name).write_bytes(await file.read())

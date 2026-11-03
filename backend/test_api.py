@@ -1,6 +1,7 @@
 import base64
 import os
 import tempfile
+from pathlib import Path
 
 os.environ["EGE_DB"] = os.path.join(tempfile.mkdtemp(), "test.db")
 os.environ["ADMIN_PASSWORD"] = "test-pw"
@@ -43,6 +44,12 @@ def test_flow():
     tb = c.post("/api/admin/tasks", json={"project_id": pb, "title": "B1"}, headers=AUTH).json()["id"]
     assert c.post("/api/admin/tasks", json={"project_id": 999}, headers=AUTH).status_code == 404
     assert c.post("/api/admin/tasks", json={}, headers=AUTH).status_code == 422  # без проекта нельзя
+
+    # загрузка: только картинки
+    assert c.post("/api/admin/upload", files={"file": ("a.html", b"<b>", "text/html")}, headers=AUTH).status_code == 415
+    up = c.post("/api/admin/upload", files={"file": ("image.png", b"\x89PNG", "image/png")}, headers=AUTH)
+    assert up.status_code == 200 and up.json()["url"].endswith(".png")
+    (Path(__file__).parent / up.json()["url"].lstrip("/")).unlink()
     proj = c.get(f"/api/projects/{pa}").json()
     assert proj["title"] == "Математика" and [t["title"] for t in proj["tasks"]] == ["A1", "A2"]
     assert proj["tasks"][0]["progress"] == {"theory": False, "problems": False, "practice": False}

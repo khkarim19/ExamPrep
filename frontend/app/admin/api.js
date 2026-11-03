@@ -36,3 +36,21 @@ export async function move(list, index, delta, reorderUrl) {
   await adminFetch(reorderUrl, { method: "PUT", body: JSON.stringify({ ids: next.map((x) => x.id) }) });
   return next;
 }
+
+// пропсы для textarea: картинку из буфера или перетаскиванием грузим и подставляем ![](url) в место курсора
+export function imageProps(setValue) {
+  async function insert(e, files) {
+    const file = [...files].find((f) => f.type.startsWith("image/"));
+    if (!file) return;
+    e.preventDefault();
+    const { selectionStart: a, selectionEnd: b } = e.currentTarget;
+    const form = new FormData();
+    form.append("file", file);
+    const { url } = await adminFetch("/api/admin/upload", { method: "POST", body: form });
+    setValue((v) => v.slice(0, a) + `![](${url})` + v.slice(b));
+  }
+  return {
+    onPaste: (e) => insert(e, e.clipboardData.files),
+    onDrop: (e) => insert(e, e.dataTransfer.files),
+  };
+}
