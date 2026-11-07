@@ -31,6 +31,7 @@ const ICONS = {
     <path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" />
     <path d="m19.07 4.93-1.41 1.41" /></>,
   moon: <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />,
+  layers: <><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" /><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" /><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65" /></>,
   book: <><path d="M12 7v14" /><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z" /></>,
 };
 
@@ -140,9 +141,12 @@ export function Shell({ project, activeId, kicker, title, children }) {
             <div className="topbar-title">{title}</div>
           </div>
           <div className="topbar-actions">
-            {project && (
+            {project && <>
+              <Link className="topbar-btn" href={`/projects/${project.id}/cards`}>
+                <Icon name="layers" />Карточки{project.cards_due > 0 && <span className="badge">{project.cards_due}</span>}
+              </Link>
               <button className="topbar-btn" onClick={() => setGlossaryOpen(true)}><Icon name="book" />Словарь</button>
-            )}
+            </>}
             <ThemeToggle />
           </div>
         </header>

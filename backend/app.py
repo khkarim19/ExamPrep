@@ -3,6 +3,7 @@ import secrets
 import sqlite3
 import uuid
 from contextlib import closing
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Literal
 
@@ -123,6 +124,8 @@ def get_project(project_id: int):
         raise HTTPException(404)
     progress = progress_of()
     return {**dict(rows[0]),
+            "cards_due": q("SELECT COUNT(*) n FROM cards WHERE project_id = ? AND due <= ?",
+                           (project_id, date.today().isoformat()))[0]["n"],
             "tasks": [{**dict(t), "progress": progress(t["id"])} for t in q(
                 "SELECT id, title, sort_order FROM tasks WHERE project_id = ? ORDER BY sort_order",
                 (project_id,))]}
@@ -247,6 +250,96 @@ def update_glossary_entry(entry_id: int, g: GlossaryPatch):
 @app.delete("/api/glossary/{entry_id}")
 def delete_glossary_entry(entry_id: int):
     return delete("glossary", entry_id)
+
+
+# ---------- карточки: интервальное повторение (SM-2, как в Anki) ----------
+
+GRADES = ("again", "hard", "good", "easy")
+
+
+def schedule(c, grade):
+    """(интервал в днях, ease, повторений) после оценки. again — карточка остаётся на сегодня."""
+    ease, reps, days = c["ease"], c["reps"], c["interval_days"]
+    if grade == "again":
+        return 0, max(1.3, ease - 0.2), 0
+    if grade == "hard":
+        return max(1, round(days * 1.2)), max(1.3, ease - 0.15), reps + 1
+    good = 1 if reps == 0 else 6 if reps == 1 else round(days * ease)
+    if grade == "good":
+        return good, ease, reps + 1
+    return max(good + 1, round(good * 1.3)), ease + 0.15, reps + 1
+
+
+def card_out(c):
+    # ponytail: «сегодня» по часам сервера (в Docker это UTC), без часового пояса пользователя
+    return {"id": c["id"], "front": c["front"], "back": c["back"], "due": c["due"],
+            "interval": c["interval_days"], "reps": c["reps"], "is_due": c["due"] <= date.today().isoformat(),
+            "next": {g: schedule(c, g)[0] for g in GRADES}}
+
+
+def get_card(card_id):
+    rows = q("SELECT * FROM cards WHERE id = ?", (card_id,))
+    if not rows:
+        raise HTTPException(404)
+    return rows[0]
+
+
+class CardIn(BaseModel):
+    front: str = Field(min_length=1, max_length=5000)
+    back: str = Field(default="", max_length=5000)
+
+
+class CardPatch(BaseModel):
+    front: str | None = Field(default=None, min_length=1, max_length=5000)
+    back: str | None = Field(default=None, max_length=5000)
+
+
+class ReviewIn(BaseModel):
+    grade: Literal["again", "hard", "good", "easy"]
+
+
+@app.get("/api/projects/{project_id}/cards")
+def list_cards(project_id: int):
+    if not q("SELECT 1 FROM projects WHERE id = ?", (project_id,)):
+        raise HTTPException(404)
+    return [card_out(c) for c in q("SELECT * FROM cards WHERE project_id = ? ORDER BY due, id", (project_id,))]
+
+
+@app.post("/api/projects/{project_id}/cards", status_code=201)
+def create_card(project_id: int, c: CardIn):
+    front = c.front.strip()
+    if not front:
+        raise HTTPException(422, "Вопрос не может быть пустым")
+    try:
+        cur = w("INSERT INTO cards (project_id, front, back, due) VALUES (?, ?, ?, ?)",
+                (project_id, front, c.back.strip(), date.today().isoformat()))
+    except sqlite3.IntegrityError:
+        raise HTTPException(404, "Нет такого проекта")
+    return card_out(get_card(cur.lastrowid))
+
+
+@app.put("/api/cards/{card_id}")
+def update_card(card_id: int, c: CardPatch):
+    get_card(card_id)
+    front = None if c.front is None else c.front.strip()
+    if front == "":
+        raise HTTPException(422, "Вопрос не может быть пустым")
+    w("UPDATE cards SET front = COALESCE(?, front), back = COALESCE(?, back) WHERE id = ?",
+      (front, None if c.back is None else c.back.strip(), card_id))
+    return card_out(get_card(card_id))
+
+
+@app.delete("/api/cards/{card_id}")
+def delete_card(card_id: int):
+    return delete("cards", card_id)
+
+
+@app.post("/api/cards/{card_id}/review")
+def review_card(card_id: int, r: ReviewIn):
+    days, ease, reps = schedule(get_card(card_id), r.grade)
+    w("UPDATE cards SET interval_days = ?, ease = ?, reps = ?, due = ? WHERE id = ?",
+      (days, ease, reps, (date.today() + timedelta(days=days)).isoformat(), card_id))
+    return card_out(get_card(card_id))
 
 
 @app.put("/api/theory/{section_id}/read")

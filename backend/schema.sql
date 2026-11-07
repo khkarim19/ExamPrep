@@ -42,6 +42,18 @@ CREATE TABLE IF NOT EXISTS glossary (
   definition TEXT NOT NULL DEFAULT ''
 );
 
+-- карточки проекта с интервальным повторением (SM-2): due — дата ISO, когда показать снова
+CREATE TABLE IF NOT EXISTS cards (
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  front TEXT NOT NULL,
+  back TEXT NOT NULL DEFAULT '',
+  due TEXT NOT NULL,
+  interval_days INTEGER NOT NULL DEFAULT 0,
+  ease REAL NOT NULL DEFAULT 2.5,
+  reps INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS progress (
   task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   section TEXT NOT NULL CHECK (section IN ('theory', 'problems', 'practice')),

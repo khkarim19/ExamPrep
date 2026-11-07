@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon, MD as Markdown } from "./ui";
 
-async function jsonFetch(url, method, body) {
+export async function jsonFetch(url, method, body) {
   const res = await fetch(url, {
     method,
     headers: { "Content-Type": "application/json" },

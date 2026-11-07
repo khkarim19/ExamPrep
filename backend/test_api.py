@@ -1,6 +1,7 @@
 import base64
 import os
 import tempfile
+from datetime import date, timedelta
 from pathlib import Path
 
 os.environ["EGE_DB"] = os.path.join(tempfile.mkdtemp(), "test.db")
@@ -167,11 +168,34 @@ def test_flow():
     assert c.get(f"/api/tasks/{tid}").status_code == 404
     assert len(c.get(G).json()) == 1  # словарь принадлежит проекту и переживает удаление задания
 
+    # карточки: SM-2, 1 → 6 → ×ease дней; «снова» возвращает на сегодня
+    K = f"/api/projects/{pa}/cards"
+    today = date.today()
+    k = c.post(K, json={"front": "  Что такое RPO?  ", "back": "допустимая потеря данных"})
+    assert k.status_code == 201 and k.json()["front"] == "Что такое RPO?" and k.json()["is_due"]
+    kid = k.json()["id"]
+    assert c.post(K, json={"front": "   "}).status_code == 422 and c.post("/api/projects/999/cards", json={"front": "x"}).status_code == 404
+    assert c.get(f"/api/projects/{pa}").json()["cards_due"] == 1
+    R = f"/api/cards/{kid}/review"
+    assert c.get(K).json()[0]["next"] == {"again": 0, "hard": 1, "good": 1, "easy": 2}
+    for grade, days in [("good", 1), ("good", 6), ("good", 15), ("again", 0)]:
+        r = c.post(R, json={"grade": grade}).json()
+        assert r["interval"] == days and r["due"] == (today + timedelta(days=days)).isoformat(), (grade, r)
+    assert r["reps"] == 0 and r["is_due"]
+    assert c.post(R, json={"grade": "easy"}).json()["interval"] == 2  # reps 0: good=1, easy=max(2, 1.3)
+    assert c.post(R, json={"grade": "oops"}).status_code == 422 and c.post("/api/cards/999/review", json={"grade": "good"}).status_code == 404
+    assert c.get(f"/api/projects/{pa}").json()["cards_due"] == 0
+    assert c.put(f"/api/cards/{kid}", json={"back": "ответ"}).json()["back"] == "ответ"
+    assert c.put(f"/api/cards/{kid}", json={"front": " "}).status_code == 422 and c.put("/api/cards/999", json={}).status_code == 404
+    assert c.delete(f"/api/cards/{kid}").status_code == 200 and c.get(K).json() == []
+    c.post(K, json={"front": "останется до удаления проекта"})
+
     # удаление проекта каскадом удаляет его задания (и всё под ними), соседний проект не трогает
     assert c.delete(f"/api/admin/projects/{pa}", headers=AUTH).status_code == 200
     assert c.get(f"/api/tasks/{t1}").status_code == 404
     assert c.get(f"/api/tasks/{tb}").status_code == 200
     assert [p["id"] for p in c.get("/api/projects").json()] == [pb]
+    assert app.q("SELECT COUNT(*) n FROM cards")[0]["n"] == 0  # карточки удалились вместе с проектом
 
 
 def test_glossary_moves_to_project():
